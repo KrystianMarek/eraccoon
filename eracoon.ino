@@ -1,6 +1,6 @@
 
 /*!
-* eracoon
+* eraccoon
 *
 * @version  V0.1
 */
