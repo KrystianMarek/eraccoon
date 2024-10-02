@@ -27,3 +27,8 @@ https://docs.arduino.cc/hardware/giga-r1-wifi/
 
 ## Background
 - https://www.instructables.com/Understanding-the-Pull-up-Resistor-With-Arduino/
+
+# Setup
+- Install [realsense](https://github.com/IntelRealSense/librealsense/blob/master/doc/installation_jetson.md) on Nvidia
+  Jetson
+- https://dev.intelrealsense.com/docs/docs-get-started
