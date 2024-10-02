@@ -28,6 +28,32 @@ void setup_joystick() {
     pinMode(i,INPUT);
 }
 
+//Sharp sensors
+const float distance_constant = 0.0048828125;
+unsigned long lastUpdateTime = 0;
+const unsigned long updateInterval = 1000;
+
+void sharp() {
+    //https://www.instructables.com/How-to-Use-the-Sharp-IR-Sensor-GP2Y0A41SK0F-Arduin/
+    float volts_fl = analogRead(A0)*distance_constant;  // value from sensor * (5/1024)
+    float volts_fr = analogRead(A1)*distance_constant;
+    float volts_rl = analogRead(A2)*distance_constant;
+    float volts_rr = analogRead(A3)*distance_constant;
+
+    int distance_fl = 13*pow(volts_fl, -1); // worked out from datasheet graph
+    int distance_fr = 13*pow(volts_fr, -1);
+    int distance_rl = 13*pow(volts_rl, -1);
+    int distance_rr = 13*pow(volts_rr, -1);
+
+    unsigned long currentTime = millis();
+    if (currentTime - lastUpdateTime >= updateInterval) {
+        lcd.clear();
+
+        lcd.print(String("fl: " + String(distance_fl) + " |fr: " + String(distance_fr) + "\n|rl: " + String(distance_rl) + " |rr: " + String(distance_rr)));
+        lastUpdateTime = currentTime;
+    }
+}
+
 void setup() {
   lcd.init();
   lcd.clear();
@@ -79,6 +105,7 @@ void j_ride(int j_forward, int j_backward, int j_left, int j_right) {
 // The loop routine runs over and over again forever.
 void loop() {
   j_ride(digitalRead(PIN_J_FORWARD), digitalRead(PIN_J_BACK), digitalRead(PIN_J_LEFT), digitalRead(PIN_J_RIGHT));
+  sharp();
 }
 
 /*
