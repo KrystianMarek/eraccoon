@@ -1,5 +1,6 @@
- #include "CytronMotorDriver.h"
- #include "DFRobot_RGBLCD1602.h"
+#include <Arduino.h>
+#include "CytronMotorDriver.h"
+#include "DFRobot_RGBLCD1602.h"
 
 // Define Joystick pins
 const int PIN_J_FORWARD = 22;
@@ -7,8 +8,8 @@ const int PIN_J_BACK = 25;
 const int PIN_J_LEFT = 24;
 const int PIN_J_RIGHT = 23;
 
-const int MAX_SPEED = 128;
-const int MIN_SPEED = 50;
+const int CHILD_MAX_SPEED = 60;
+const unsigned long CHILD_ACCELERATION_TIME = 1000; // Time to reach full speed in milliseconds
 
 // LCD
 const int colorR = 0;
@@ -30,7 +31,8 @@ void setup_joystick() {
 
 //Sharp sensors
 const float distance_constant = 0.0048828125;
-unsigned long lastUpdateTime = 0;
+unsigned long lastUpdateTimeSharp = 0;
+unsigned long lastUpdateTimeJoy = 0;
 const unsigned long updateInterval = 1000;
 
 void sharp() {
@@ -46,11 +48,11 @@ void sharp() {
     int distance_rr = 13*pow(volts_rr, -1);
 
     unsigned long currentTime = millis();
-    if (currentTime - lastUpdateTime >= updateInterval) {
+    if (currentTime - lastUpdateTimeSharp >= updateInterval) {
         lcd.clear();
 
         lcd.print(String("fl: " + String(distance_fl) + " |fr: " + String(distance_fr) + "\n|rl: " + String(distance_rl) + " |rr: " + String(distance_rr)));
-        lastUpdateTime = currentTime;
+        lastUpdateTimeSharp = currentTime;
     }
 }
 
@@ -64,41 +66,59 @@ void setup() {
   setup_joystick();
 }
 
-void j_ride(int j_forward, int j_backward, int j_left, int j_right) {
-  //stop
-  if (j_forward == LOW && j_backward == LOW && j_left == LOW && j_right == LOW) {
+void j_ride(int forward, int backward, int left, int right) {
+
+    unsigned long currentTime = millis();
+    unsigned long deltaTime = currentTime - lastUpdateTimeJoy;
+    lastUpdateTimeJoy = currentTime;
+
+    bool j_forward = digitalRead(PIN_J_FORWARD);
+    bool j_backward = digitalRead(PIN_J_BACK);
+    bool j_left = digitalRead(PIN_J_LEFT);
+    bool j_right = digitalRead(PIN_J_RIGHT);
+
+    int targetSpeed = 0;
+    if (forward || backward || left || right) {
+        targetSpeed = CHILD_MAX_SPEED;
+    }
+
+    // Calculate speed change
+    int speedChange = (int)((float)CHILD_MAX_SPEED * deltaTime / CHILD_ACCELERATION_TIME);
+    int currentSpeed = 0;
+
+    // Accelerate or decelerate
+    if (targetSpeed > currentSpeed) {
+      currentSpeed = min(currentSpeed + speedChange, CHILD_MAX_SPEED);
+    } else if (targetSpeed < currentSpeed) {
+      currentSpeed = max(currentSpeed - speedChange, 0);
+    }
+
+  if (j_forward == HIGH && j_backward == LOW && j_left == LOW && j_right == LOW) {  //forward
+    motor_fl.setSpeed(currentSpeed);
+    motor_fr.setSpeed(currentSpeed);
+    motor_rl.setSpeed(currentSpeed);
+    motor_rr.setSpeed(currentSpeed);
+  } else if (j_forward == LOW && j_backward == HIGH && j_left == LOW && j_right == LOW) { //back
+    motor_fl.setSpeed(-currentSpeed);
+    motor_fr.setSpeed(-currentSpeed);
+    motor_rl.setSpeed(-currentSpeed);
+    motor_rr.setSpeed(-currentSpeed);
+  } else if (j_forward == LOW && j_backward == LOW && j_left == HIGH && j_right == LOW) { //dead left
+    motor_fl.setSpeed(-currentSpeed);
+    motor_fr.setSpeed(currentSpeed);
+    motor_rl.setSpeed(-currentSpeed);
+    motor_rr.setSpeed(currentSpeed);
+  } else if (j_forward == LOW && j_backward == LOW && j_left == LOW && j_right == HIGH) { //dead right
+    motor_fl.setSpeed(currentSpeed);
+    motor_fr.setSpeed(-currentSpeed);
+    motor_rl.setSpeed(currentSpeed);
+    motor_rr.setSpeed(-currentSpeed);
+  } else {
+    //stop
     motor_fl.setSpeed(0);
     motor_fr.setSpeed(0);
     motor_rl.setSpeed(0);
     motor_rr.setSpeed(0);
-  }
-  //forward
-  if (j_forward == HIGH && j_backward == LOW && j_left == LOW && j_right == LOW) {
-    motor_fl.setSpeed(MIN_SPEED);
-    motor_fr.setSpeed(MIN_SPEED);
-    motor_rl.setSpeed(MIN_SPEED);
-    motor_rr.setSpeed(MIN_SPEED);
-  }
-  //back
-  if (j_forward == LOW && j_backward == HIGH && j_left == LOW && j_right == LOW) {
-    motor_fl.setSpeed(-MIN_SPEED);
-    motor_fr.setSpeed(-MIN_SPEED);
-    motor_rl.setSpeed(-MIN_SPEED);
-    motor_rr.setSpeed(-MIN_SPEED);
-  }
-  //dead left 
-  if (j_forward == LOW && j_backward == LOW && j_left == HIGH && j_right == LOW) {
-    motor_fl.setSpeed(-MIN_SPEED);
-    motor_fr.setSpeed(MIN_SPEED);
-    motor_rl.setSpeed(-MIN_SPEED);
-    motor_rr.setSpeed(MIN_SPEED);
-  }
-  //dead right
-  if (j_forward == LOW && j_backward == LOW && j_left == LOW && j_right == HIGH) {
-    motor_fl.setSpeed(MIN_SPEED);
-    motor_fr.setSpeed(-MIN_SPEED);
-    motor_rl.setSpeed(MIN_SPEED);
-    motor_rr.setSpeed(-MIN_SPEED);
   }
 }
 

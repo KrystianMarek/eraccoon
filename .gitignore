@@ -1,3 +1,5 @@
 .idea
+.vscode
+.secret
 external
 .DS_Store
