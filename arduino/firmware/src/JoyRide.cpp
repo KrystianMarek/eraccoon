@@ -4,6 +4,8 @@
 
 #include "JoyRide.h"
 
+#include <DistanceSensors.h>
+
 JoyRide::JoyRide(
         const int pin_forward,
         const int pin_backward,
@@ -34,11 +36,11 @@ JoyRide::JoyRide(
     this->elapsedMillis = 0;
 }
 
-void JoyRide::ride(const bool padLock) {
+void JoyRide::ride(const bool padLock, DistanceSensors *distance_sensors) {
     if (padLock) return;
 
     if (ticker->tick()) {
-        this->_ride(this->_setSpeed());
+        this->_ride(this->_setSpeed(), distance_sensors);
     }
 }
 
@@ -92,17 +94,31 @@ JoyState JoyRide::_setSpeed() {
     return joyState;
 }
 
-void JoyRide::_ride(JoyState joyState) {
-    if (joyState.forward && not joyState.backward && not joyState.left && not joyState.right) {  //forward
-        motor_fl->setSpeed(joyState.speed);
-        motor_fr->setSpeed(joyState.speed);
-        motor_rl->setSpeed(joyState.speed);
-        motor_rr->setSpeed(joyState.speed);
+void JoyRide::_ride(JoyState joyState, DistanceSensors *distance_sensors) {
+    if (joyState.forward && not joyState.backward && not joyState.left && not joyState.right) {//forward
+        if (not distance_sensors->frontCollison()) {
+            motor_fl->setSpeed(joyState.speed);
+            motor_fr->setSpeed(joyState.speed);
+            motor_rl->setSpeed(joyState.speed);
+            motor_rr->setSpeed(joyState.speed);
+        } else {
+            motor_fl->setSpeed(0);
+            motor_fr->setSpeed(0);
+            motor_rl->setSpeed(0);
+            motor_rr->setSpeed(0);
+        }
     } else if (joyState.backward && not joyState.forward && not joyState.left && not joyState.right) { //back
-        motor_fl->setSpeed(-joyState.speed);
-        motor_fr->setSpeed(-joyState.speed);
-        motor_rl->setSpeed(-joyState.speed);
-        motor_rr->setSpeed(-joyState.speed);
+        if (not distance_sensors->rearCollison()) {
+            motor_fl->setSpeed(-joyState.speed);
+            motor_fr->setSpeed(-joyState.speed);
+            motor_rl->setSpeed(-joyState.speed);
+            motor_rr->setSpeed(-joyState.speed);
+        } else {
+            motor_fl->setSpeed(0);
+            motor_fr->setSpeed(0);
+            motor_rl->setSpeed(0);
+            motor_rr->setSpeed(0);
+        }
     } else if (joyState.left and not joyState.right and not joyState.forward and not joyState.backward) { //dead left
         motor_fl->setSpeed(-joyState.speed);
         motor_fr->setSpeed(joyState.speed);

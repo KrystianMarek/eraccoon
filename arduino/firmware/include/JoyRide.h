@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <CytronMotorDriver.h>
+#include <DistanceSensors.h>
 #include <Ticker.h>
 
 struct JoyState {
@@ -32,7 +33,7 @@ public:
         CytronMD *motor_rr
         );
 
-    void ride(bool padLock);
+    void ride(bool padLock, DistanceSensors *distance_sensors);
 private:
     int pin_forward;
     int pin_backward;
@@ -49,7 +50,7 @@ private:
     unsigned long elapsedMillis;
     Ticker *ticker;
 
-    void _ride(JoyState joyState);
+    void _ride(JoyState joyState, DistanceSensors *distance_sensors);
     void _ride();
     JoyState _calculateSpeed();
     JoyState _setSpeed();

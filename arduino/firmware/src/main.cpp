@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <JoyRide.h>
+#include <DistanceSensors.h>
 
 #include "CytronMotorDriver.h"
 #include "DFRobot_RGBLCD1602.h"
@@ -53,6 +54,7 @@ void sharp() {
 }
 
 JoyRide *joyRide;
+DistanceSensors *distanceSensors;
 
 void setup() {
   lcd.init();
@@ -61,7 +63,11 @@ void setup() {
     
   // Print a message to the LCD.
   lcd.print("hello3!");
+  Serial.begin(9600);
+  Serial.println("<Arduino is ready>");
+
   setup_joystick();
+    distanceSensors = new DistanceSensors();
 
   joyRide = new JoyRide(PIN_J_FORWARD, PIN_J_BACK, PIN_J_LEFT, PIN_J_RIGHT,
   CHILD_ACCELERATION_TIME, CHILD_MAX_SPEED,
@@ -72,6 +78,6 @@ void setup() {
 
 // The loop routine runs over and over again forever.
 void loop() {
-  joyRide->ride(false);
+  joyRide->ride(false, distanceSensors);
   // sharp();
 }
