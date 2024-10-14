@@ -9,6 +9,13 @@
 #include <CytronMotorDriver.h>
 #include <Ticker.h>
 
+struct JoyState {
+    bool forward;
+    bool backward;
+    bool left;
+    bool right;
+    int speed;
+};
 
 class JoyRide {
 public:
@@ -42,7 +49,9 @@ private:
     unsigned long elapsedMillis;
     Ticker *ticker;
 
-    void _ride(int speed);
+    void _ride(JoyState joyState);
+    void _ride();
+    JoyState _calculateSpeed();
 };
 
 

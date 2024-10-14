@@ -11,7 +11,7 @@ constexpr int PIN_J_LEFT = 24;
 constexpr int PIN_J_RIGHT = 23;
 
 constexpr int CHILD_MAX_SPEED = 60;
-constexpr unsigned long CHILD_ACCELERATION_TIME = 2000; // Time to reach full speed in milliseconds
+constexpr unsigned long CHILD_ACCELERATION_TIME = 1000; // Time to reach full speed in milliseconds
 
 // LCD
 const int colorR = 0;
@@ -60,7 +60,7 @@ void setup() {
   lcd.setRGB(colorR, colorG, colorB);
     
   // Print a message to the LCD.
-  lcd.print("hello2!");
+  lcd.print("hello3!");
   setup_joystick();
 
   joyRide = new JoyRide(PIN_J_FORWARD, PIN_J_BACK, PIN_J_LEFT, PIN_J_RIGHT,
