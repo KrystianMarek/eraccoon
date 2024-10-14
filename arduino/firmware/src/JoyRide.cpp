@@ -50,24 +50,25 @@ JoyState JoyRide::_calculateSpeed() {
     joyState.right = digitalRead(pin_right);
     joyState.speed = 0;
 
-    const long currentTime = millis();
-    long deltaTime = currentTime - elapsedMillis;
+    const unsigned long currentTime = millis();
+    long unsigned long deltaTime = abs(currentTime - elapsedMillis);
+    int accelerationRate = max_speed / acc_time;
 
     if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed = static_cast<int16_t>(max_speed * abs(deltaTime) / acc_time);
+            joyState.speed += accelerationRate * deltaTime;
         } else { // past acceleration / declaration window
             joyState.speed = max_speed;
         }
     } else { // decelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed = static_cast<int16_t>(max_speed - (max_speed * abs(deltaTime) / acc_time));
+            joyState.speed -= accelerationRate * deltaTime;
         } else { // past acceleration / declaration window
             joyState.speed = 0;
         }
     }
 
-    if (elapsedMillis + acc_time < currentTime) {
+    if (currentTime > elapsedMillis + acc_time) {
         elapsedMillis = currentTime;
     }
 
