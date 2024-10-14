@@ -38,7 +38,7 @@ void JoyRide::ride(const bool padLock) {
     if (padLock) return;
 
     if (ticker->tick()) {
-        this->_ride(this->_calculateSpeed());
+        this->_ride(this->_setSpeed());
     }
 }
 
@@ -56,7 +56,7 @@ JoyState JoyRide::_calculateSpeed() {
 
     if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed += accelerationRate * deltaTime;
+            joyState.speed = max_speed * accelerationRate;
         } else { // past acceleration / declaration window
             joyState.speed = max_speed;
         }
@@ -70,6 +70,23 @@ JoyState JoyRide::_calculateSpeed() {
 
     if (currentTime > elapsedMillis + acc_time) {
         elapsedMillis = currentTime;
+    }
+
+    return joyState;
+}
+
+JoyState JoyRide::_setSpeed() {
+    auto joyState = JoyState();
+    joyState.forward = digitalRead(pin_forward);
+    joyState.backward = digitalRead(pin_backward);
+    joyState.left = digitalRead(pin_left);
+    joyState.right = digitalRead(pin_right);
+    joyState.speed = 0;
+
+    if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
+        joyState.speed = max_speed;
+    } else { // decelerate
+        joyState.speed = 0;
     }
 
     return joyState;

@@ -52,6 +52,7 @@ private:
     void _ride(JoyState joyState);
     void _ride();
     JoyState _calculateSpeed();
+    JoyState _setSpeed();
 };
 
 
