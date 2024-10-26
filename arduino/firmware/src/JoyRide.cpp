@@ -3,7 +3,6 @@
 //
 
 #include "JoyRide.h"
-
 #include <DistanceSensors.h>
 
 JoyRide::JoyRide(
@@ -51,24 +50,23 @@ JoyState JoyRide::_calculateSpeed() {
     joyState.backward = digitalRead(pin_backward);
     joyState.left = digitalRead(pin_left);
     joyState.right = digitalRead(pin_right);
-    joyState.speed = 0;
 
     const long currentTime = millis();
-    long long deltaTime = currentTime - elapsedMillis;
+    long deltaTime = currentTime > elapsedMillis ? currentTime - elapsedMillis : 0;
     int accelerationRate = max_speed / acc_time;
     int deltaSpeed = accelerationRate * deltaTime;
 
     if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed = min(max_speed, deltaSpeed);
+            speed = min(max_speed, deltaSpeed);
         } else { // past acceleration / declaration window
-            joyState.speed = max(0, joyState.speed - deltaSpeed);;
+            speed = max_speed;
         }
     } else { // decelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed = max(0, joyState.speed - deltaSpeed);
+            speed = max(0, speed - deltaSpeed);
         } else { // past acceleration / declaration window
-            joyState.speed = 0;
+            speed = 0;
         }
     }
 
@@ -85,12 +83,11 @@ JoyState JoyRide::_setSpeed() {
     joyState.backward = digitalRead(pin_backward);
     joyState.left = digitalRead(pin_left);
     joyState.right = digitalRead(pin_right);
-    joyState.speed = 0;
 
     if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
-        joyState.speed = max_speed;
+        speed = max_speed;
     } else { // decelerate
-        joyState.speed = 0;
+        speed = 0;
     }
 
     return joyState;
@@ -99,10 +96,10 @@ JoyState JoyRide::_setSpeed() {
 void JoyRide::_ride(JoyState joyState, DistanceSensors *distance_sensors) {
     if (joyState.forward && not joyState.backward && not joyState.left && not joyState.right) {//forward
         if (not distance_sensors->frontCollison()) {
-            motor_fl->setSpeed(joyState.speed);
-            motor_fr->setSpeed(joyState.speed);
-            motor_rl->setSpeed(joyState.speed);
-            motor_rr->setSpeed(joyState.speed);
+            motor_fl->setSpeed(speed);
+            motor_fr->setSpeed(speed);
+            motor_rl->setSpeed(speed);
+            motor_rr->setSpeed(speed);
         } else {
             motor_fl->setSpeed(0);
             motor_fr->setSpeed(0);
@@ -111,10 +108,10 @@ void JoyRide::_ride(JoyState joyState, DistanceSensors *distance_sensors) {
         }
     } else if (joyState.backward && not joyState.forward && not joyState.left && not joyState.right) { //back
         if (not distance_sensors->rearCollison()) {
-            motor_fl->setSpeed(-joyState.speed);
-            motor_fr->setSpeed(-joyState.speed);
-            motor_rl->setSpeed(-joyState.speed);
-            motor_rr->setSpeed(-joyState.speed);
+            motor_fl->setSpeed(-speed);
+            motor_fr->setSpeed(-speed);
+            motor_rl->setSpeed(-speed);
+            motor_rr->setSpeed(-speed);
         } else {
             motor_fl->setSpeed(0);
             motor_fr->setSpeed(0);
@@ -122,20 +119,20 @@ void JoyRide::_ride(JoyState joyState, DistanceSensors *distance_sensors) {
             motor_rr->setSpeed(0);
         }
     } else if (joyState.left and not joyState.right and not joyState.forward and not joyState.backward) { //dead left
-        motor_fl->setSpeed(-joyState.speed);
-        motor_fr->setSpeed(joyState.speed);
-        motor_rl->setSpeed(-joyState.speed);
-        motor_rr->setSpeed(joyState.speed);
+        motor_fl->setSpeed(-speed);
+        motor_fr->setSpeed(speed);
+        motor_rl->setSpeed(-speed);
+        motor_rr->setSpeed(speed);
     } else if (joyState.right and not joyState.left and not joyState.forward and not joyState.backward) { //dead right
-        motor_fl->setSpeed(joyState.speed);
-        motor_fr->setSpeed(-joyState.speed);
-        motor_rl->setSpeed(joyState.speed);
-        motor_rr->setSpeed(-joyState.speed);
+        motor_fl->setSpeed(speed);
+        motor_fr->setSpeed(-speed);
+        motor_rl->setSpeed(speed);
+        motor_rr->setSpeed(-speed);
     } else {
         //stop
-        motor_fl->setSpeed(joyState.speed);
-        motor_fr->setSpeed(joyState.speed);
-        motor_rl->setSpeed(joyState.speed);
-        motor_rr->setSpeed(joyState.speed);
+        motor_fl->setSpeed(speed);
+        motor_fr->setSpeed(speed);
+        motor_rl->setSpeed(speed);
+        motor_rr->setSpeed(speed);
     }
 }

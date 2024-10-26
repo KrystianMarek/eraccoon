@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -v
+set -ve
 
 pio run
 rsync -ar .pio/build/giga "${ER_SSH_USER}@${ER_JETSON_IP}:~/"
