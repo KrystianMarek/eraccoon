@@ -47,11 +47,10 @@ private:
     CytronMD *motor_rl;
     CytronMD *motor_rr;
 
-    unsigned long elapsedMillis;
+    long elapsedMillis;
     Ticker *ticker;
 
     void _ride(JoyState joyState, DistanceSensors *distance_sensors);
-    void _ride();
     JoyState _calculateSpeed();
     JoyState _setSpeed();
 };

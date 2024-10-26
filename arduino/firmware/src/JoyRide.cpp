@@ -36,11 +36,12 @@ JoyRide::JoyRide(
     this->elapsedMillis = 0;
 }
 
-void JoyRide::ride(const bool padLock, DistanceSensors *distance_sensors) {
+void JoyRide::ride(bool padLock, DistanceSensors *distance_sensors) {
     if (padLock) return;
 
     if (ticker->tick()) {
         this->_ride(this->_setSpeed(), distance_sensors);
+        // this->_ride(this->_calculateSpeed(), distance_sensors);
     }
 }
 
@@ -52,25 +53,26 @@ JoyState JoyRide::_calculateSpeed() {
     joyState.right = digitalRead(pin_right);
     joyState.speed = 0;
 
-    const unsigned long currentTime = millis();
-    long unsigned long deltaTime = abs(currentTime - elapsedMillis);
+    const long currentTime = millis();
+    long long deltaTime = currentTime - elapsedMillis;
     int accelerationRate = max_speed / acc_time;
+    int deltaSpeed = accelerationRate * deltaTime;
 
     if (joyState.forward || joyState.backward || joyState.left || joyState.right) { // accelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed = max_speed * accelerationRate;
+            joyState.speed = min(max_speed, deltaSpeed);
         } else { // past acceleration / declaration window
-            joyState.speed = max_speed;
+            joyState.speed = max(0, joyState.speed - deltaSpeed);;
         }
     } else { // decelerate
         if ( deltaTime < acc_time ) { // within acceleration / declaration window
-            joyState.speed -= accelerationRate * deltaTime;
+            joyState.speed = max(0, joyState.speed - deltaSpeed);
         } else { // past acceleration / declaration window
             joyState.speed = 0;
         }
     }
 
-    if (currentTime > elapsedMillis + acc_time) {
+    if (currentTime > (elapsedMillis + acc_time)) {
         elapsedMillis = currentTime;
     }
 

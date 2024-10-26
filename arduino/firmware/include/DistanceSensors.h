@@ -18,7 +18,7 @@ class DistanceSensors {
   private:
     Ticker *ticker;
     const float distance_constant = 0.0048828125;
-    const int colissionDistance = 6;
+    const int colissionDistance = 7;
     int distance_fl;
     int distance_fr;
     int distance_rl;
