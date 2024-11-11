@@ -26,6 +26,4 @@ class DistanceSensors {
     void checkDistance();
 };
 
-
-
 #endif //DISTANCESENSORS_H

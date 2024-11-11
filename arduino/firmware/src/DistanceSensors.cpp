@@ -6,6 +6,10 @@
 
 DistanceSensors::DistanceSensors() {
     this->ticker = new Ticker(10);
+    distance_fl = 0;
+    distance_fr = 0;
+    distance_rl = 0;
+    distance_rr = 0;
 }
 
 void DistanceSensors::checkDistance() {

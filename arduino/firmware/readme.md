@@ -8,3 +8,8 @@ Code is compiled on mac, then rsynced to the jetson, and from there uploaded to 
 ```shell
 pio run
 ```
+
+# serial console
+```shell
+minicom -b 115200 -o -D /dev/ttyACM0
+```
