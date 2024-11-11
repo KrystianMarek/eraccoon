@@ -13,6 +13,7 @@ class SerialLogger {
   public :
     SerialLogger();
     void println(const String &message) const;
+    void log(const String &message) const;
     void print(const String& message) const;
 
   private:

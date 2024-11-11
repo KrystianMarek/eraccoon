@@ -13,6 +13,8 @@ MyLCD::MyLCD() {
 }
 
 void MyLCD::print(String str) {
-    lcd->setCursor(0, 1);
-    lcd->print(str.c_str());
+    if (ticker->tick()) {
+        lcd->setCursor(0, 1);
+        lcd->print(str.c_str());
+    }
 }

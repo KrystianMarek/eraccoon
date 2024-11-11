@@ -6,6 +6,7 @@
 #include "MyLCD.h"
 #include <ArduinoBLE.h>
 #include <SerialLogger.h>
+// #include "Pad.h"
 
 // Define Joystick pins
 constexpr int PIN_J_FORWARD = 22;
@@ -25,6 +26,7 @@ JoyRide *joyRide;
 DistanceSensors *distanceSensors;
 MyLCD *lcd;
 SerialLogger *logger;
+// Pad *pad;
 
 void setup() {
   lcd = new MyLCD();
@@ -34,15 +36,7 @@ void setup() {
   // Serial.begin(115200);
   logger->println("<Arduino is ready>");
 
-  // begin initialization
-  if (!BLE.begin()) {
-    Serial.println("starting Bluetooth® Low Energy module failed!");
-
-    while (1);
-  }
-  Serial.println("Bluetooth® Low Energy Central scan");
-  // start scanning for peripheral
-  BLE.scan();
+  // pad = new Pad(logger, "88:03:4C:06:2D:EB");
 
   setup_joystick();
     distanceSensors = new DistanceSensors();
@@ -65,45 +59,45 @@ RSSI: -52
 Services: 0x800020 < HID ACL >
  */
 
-void _bt_scan() {
-  // check if a peripheral has been discovered
-  BLEDevice peripheral = BLE.available();
-
-  if (peripheral) {
-    // discovered a peripheral
-    Serial.println("Discovered a peripheral");
-    Serial.println("-----------------------");
-
-    // print address
-    Serial.print("Address: ");
-    Serial.println(peripheral.address());
-
-    // print the local name, if present
-    if (peripheral.hasLocalName()) {
-      Serial.print("Local Name: ");
-      Serial.println(peripheral.localName());
-    }
-
-    // print the advertised service UUIDs, if present
-    if (peripheral.hasAdvertisedServiceUuid()) {
-      Serial.print("Service UUIDs: ");
-      for (int i = 0; i < peripheral.advertisedServiceUuidCount(); i++) {
-        Serial.print(peripheral.advertisedServiceUuid(i));
-        Serial.print(" ");
-      }
-      Serial.println();
-    }
-
-    // print the RSSI
-    Serial.print("RSSI: ");
-    Serial.println(peripheral.rssi());
-
-    Serial.println();
-  }
-}
+// void _bt_scan() {
+//   // check if a peripheral has been discovered
+//   BLEDevice peripheral = BLE.available();
+//
+//   if (peripheral) {
+//     // discovered a peripheral
+//     Serial.println("Discovered a peripheral");
+//     Serial.println("-----------------------");
+//
+//     // print address
+//     Serial.print("Address: ");
+//     Serial.println(peripheral.address());
+//
+//     // print the local name, if present
+//     if (peripheral.hasLocalName()) {
+//       Serial.print("Local Name: ");
+//       Serial.println(peripheral.localName());
+//     }
+//
+//     // print the advertised service UUIDs, if present
+//     if (peripheral.hasAdvertisedServiceUuid()) {
+//       Serial.print("Service UUIDs: ");
+//       for (int i = 0; i < peripheral.advertisedServiceUuidCount(); i++) {
+//         Serial.print(peripheral.advertisedServiceUuid(i));
+//         Serial.print(" ");
+//       }
+//       Serial.println();
+//     }
+//
+//     // print the RSSI
+//     Serial.print("RSSI: ");
+//     Serial.println(peripheral.rssi());
+//
+//     Serial.println();
+//   }
+// }
 
 // The loop routine runs over and over again forever.
 void loop() {
-  _bt_scan();
+  // pad->connect();
   joyRide->ride(false, distanceSensors);
 }

@@ -19,3 +19,7 @@ void SerialLogger::println(const String& message) const {
         Serial.println(message);
     }
 }
+
+void SerialLogger::log(const String& message) const {
+    this->println(message);
+}
