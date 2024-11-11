@@ -4,9 +4,8 @@
 
 #include "CytronMotorDriver.h"
 #include "MyLCD.h"
-#include <ArduinoBLE.h>
 #include <SerialLogger.h>
-// #include "Pad.h"
+#include "Pad.h"
 
 // Define Joystick pins
 constexpr int PIN_J_FORWARD = 22;
