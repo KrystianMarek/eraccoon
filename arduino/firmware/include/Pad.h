@@ -5,11 +5,9 @@
 #ifndef PAD_H
 #define PAD_H
 
-
+#include <Arduino.h>
 #include <ArduinoBLE.h>
 #include <Ticker.h>
-#include <Arduino.h>
-#include <format.h>
 #include <SerialLogger.h>
 
 class Pad {

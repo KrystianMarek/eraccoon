@@ -25,7 +25,7 @@ JoyRide *joyRide;
 DistanceSensors *distanceSensors;
 MyLCD *lcd;
 SerialLogger *logger;
-// Pad *pad;
+Pad *pad;
 
 void setup() {
   lcd = new MyLCD();
@@ -35,7 +35,7 @@ void setup() {
   // Serial.begin(115200);
   logger->println("<Arduino is ready>");
 
-  // pad = new Pad(logger, "88:03:4C:06:2D:EB");
+  pad = new Pad(logger, "88:03:4C:06:2D:EB");
 
   setup_joystick();
     distanceSensors = new DistanceSensors();
@@ -97,6 +97,6 @@ Services: 0x800020 < HID ACL >
 
 // The loop routine runs over and over again forever.
 void loop() {
-  // pad->connect();
+  pad->connect();
   joyRide->ride(false, distanceSensors);
 }

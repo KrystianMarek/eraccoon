@@ -5,7 +5,7 @@
 #include "Pad.h"
 
 Pad::Pad(SerialLogger *logger, const String &address) {
-    this->tickerScan = new Ticker(10000);
+    this->tickerScan = new Ticker(3000);
     this->address = address;
     this->logger = logger;
 
@@ -23,16 +23,17 @@ void Pad::connect() {
     }
     while (this->tickerScan->tick() && !this->device) {
         BLEDevice peripheral = BLE.available();
-        if (peripheral.address() == this->address) {
+        this->logger->log("scanning...");
+        if (this->address.compareTo(peripheral.address())) {
             this->logger->log(String("found: ") + String(peripheral.deviceName()));
             BLE.stopScan();
 
             this->device = peripheral;
             if (this->device.connect()) {
                 logger->log("Connected");
-                this->connected = true;
             } else {
                 logger->log("Failed to connect!");
+                return;
             }
         }
     }
