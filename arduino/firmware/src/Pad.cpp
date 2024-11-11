@@ -5,41 +5,51 @@
 #include "Pad.h"
 
 Pad::Pad(SerialLogger *logger, const String &address) {
-    this->tickerScan = new Ticker(3000);
-    this->address = address;
-    this->logger = logger;
+  /*
+   * https://github.com/nondebug/dualsense?tab=readme-ov-file
+  */
+  this->tickerScan = new Ticker(2000);
+  this->address = address;
+  this->logger = logger;
 
-    if (!BLE.begin()) {
-        logger->log("starting Bluetooth® Low Energy module failed!");
-        while (1);
-    }
+  if (!BLE.begin()) {
+    logger->log("starting Bluetooth® Low Energy module failed!");
+    while (1);
+  }
 
-    logger->log("Bluetooth® Low Energy Central - Peripheral Explorer");
+  logger->log("Bluetooth® Low Energy Central - Peripheral Explorer");
 }
 
 void Pad::connect() {
-    if (this->tickerScan->tick() && !this->device) {
-        BLE.scan();
-    }
-    while (this->tickerScan->tick() && !this->device) {
-        BLEDevice peripheral = BLE.available();
-        this->logger->log("scanning...");
-        if (this->address.compareTo(peripheral.address())) {
-            this->logger->log(String("found: ") + String(peripheral.deviceName()));
-            BLE.stopScan();
+  if (this->tickerScan->tick() && !this->device) {
+    BLE.scan();
+    BLE.pairable();
+  }
 
-            this->device = peripheral;
-            if (this->device.connect()) {
-                logger->log("Connected");
-            } else {
-                logger->log("Failed to connect!");
-                return;
-            }
-        }
+  BLEDevice peripheral = BLE.available();
+  this->logger->log("scanning...");
+  if (this->address.equals(peripheral.address())) {
+
+    this->logger->log(String("found: ") + String(peripheral.deviceName()));
+    this->device = peripheral;
+
+    if (this->device.connect()) {
+      logger->log("Connected");
+      BLE.stopScan();
+    } else {
+      logger->log("Failed to connect!");
+      return;
     }
-    if (this->device) {
-        explorerPeripheral(device);
-    }
+  } else {
+    this->logger->log(
+      String("Not: ") + String(peripheral.deviceName()) +
+      String(" ") + String(peripheral.address())
+      );
+  }
+
+  if (this->device && this->device.connected()) {
+    explorerPeripheral(device);
+  }
 }
 
 void Pad::explorerPeripheral(BLEDevice peripheral) {
