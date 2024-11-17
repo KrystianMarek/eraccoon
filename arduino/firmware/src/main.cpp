@@ -35,10 +35,10 @@ void setup() {
   // Serial.begin(115200);
   logger->println("<Arduino is ready>");
 
-  pad = new Pad(logger, "88:03:4C:06:2D:EB");
+  // pad = new Pad(logger, "AC:36:1B:D9:96:5E");
 
   setup_joystick();
-    distanceSensors = new DistanceSensors();
+  distanceSensors = new DistanceSensors();
 
   joyRide = new JoyRide(PIN_J_FORWARD, PIN_J_BACK, PIN_J_LEFT, PIN_J_RIGHT,
   CHILD_ACCELERATION_TIME, CHILD_MAX_SPEED,
@@ -48,13 +48,13 @@ void setup() {
 }
 
 /**
-DUALSHOCK 4 Wireless Controller:
-Address: 88:03:4C:06:2D:EB
+DualSense Wireless Controller:
+Address: AC:36:1B:D9:96:5E
 Vendor ID: 0x054C
-Product ID: 0x09CC
+Product ID: 0x0CE6
 Firmware Version: 1.0.0
 Minor Type: Gamepad
-RSSI: -52
+RSSI: -56
 Services: 0x800020 < HID ACL >
  */
 
@@ -97,6 +97,6 @@ Services: 0x800020 < HID ACL >
 
 // The loop routine runs over and over again forever.
 void loop() {
-  pad->connect();
+  // pad->connect();
   joyRide->ride(false, distanceSensors);
 }

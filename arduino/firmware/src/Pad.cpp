@@ -7,6 +7,7 @@
 Pad::Pad(SerialLogger *logger, const String &address) {
   /*
    * https://github.com/nondebug/dualsense?tab=readme-ov-file
+   * https://github.com/felis/USB_Host_Shield_2.0/tree/master?tab=readme-ov-file#ps5-library
   */
   this->tickerScan = new Ticker(2000);
   this->address = address;
@@ -18,33 +19,46 @@ Pad::Pad(SerialLogger *logger, const String &address) {
   }
 
   logger->log("Bluetooth® Low Energy Central - Peripheral Explorer");
+  BLE.scan();
 }
 
 void Pad::connect() {
-  if (this->tickerScan->tick() && !this->device) {
-    BLE.scan();
-    BLE.pairable();
-  }
+  // if (this->tickerScan->tick() && !this->device) {
+  //   BLE.scan();
+  //   // BLE.pairable();
+  // }
 
   BLEDevice peripheral = BLE.available();
-  this->logger->log("scanning...");
-  if (this->address.equals(peripheral.address())) {
+  if (peripheral) {
+    this->logger->log("scanning...");
+    Serial.print("Found ");
+    Serial.print(peripheral.address());
+    Serial.print(" '");
+    Serial.print(peripheral.localName());
+    Serial.print("' ");
+    Serial.print(peripheral.advertisedServiceUuid());
+    Serial.println();
 
-    this->logger->log(String("found: ") + String(peripheral.deviceName()));
-    this->device = peripheral;
+    if (this->address.equals(peripheral.address())) {
 
-    if (this->device.connect()) {
-      logger->log("Connected");
-      BLE.stopScan();
+      this->logger->log(String("found: ") + String(peripheral.deviceName()));
+      this->device = peripheral;
+
+      if (this->device.connect()) {
+        logger->log("Connected");
+        BLE.stopScan();
+      } else {
+        logger->log("Failed to connect!");
+        return;
+      }
     } else {
-      logger->log("Failed to connect!");
-      return;
+      this->logger->log(
+        String("Not: ") + String(peripheral.deviceName()) +
+        String(" ") + String(peripheral.address()) +
+        String(" ") + String(peripheral.deviceName()) +
+        String(" ") + String(peripheral.appearance())
+        );
     }
-  } else {
-    this->logger->log(
-      String("Not: ") + String(peripheral.deviceName()) +
-      String(" ") + String(peripheral.address())
-      );
   }
 
   if (this->device && this->device.connected()) {
