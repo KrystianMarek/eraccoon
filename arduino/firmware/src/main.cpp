@@ -35,7 +35,9 @@ void setup() {
   // Serial.begin(115200);
   logger->println("<Arduino is ready>");
 
+  // https://forum.arduino.cc/t/bluetooth-classic-on-giga-r1/1110561 !!
   // pad = new Pad(logger, "AC:36:1B:D9:96:5E");
+
 
   setup_joystick();
   distanceSensors = new DistanceSensors();
