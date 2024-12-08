@@ -1,5 +1,7 @@
 # dualsense interface
 
+On ubuntu joystick can be tested with `jstest-gtk`
+
 https://github.com/flok/pydualsense
 
 ```shell
