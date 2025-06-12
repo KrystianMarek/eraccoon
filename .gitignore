@@ -5,3 +5,4 @@ external
 .DS_Store
 cmake-build-debug
 .venv
+*.tar
