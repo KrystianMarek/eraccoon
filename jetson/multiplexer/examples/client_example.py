@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional
 class MotorProxyClient:
     """Client for connecting to the Motor Controller Proxy via Unix socket"""
 
-    def __init__(self, socket_path: str = '/tmp/motor_controller.sock'):
+    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock'):
         self.socket_path = socket_path
         self.sock: Optional[socket.socket] = None
         self.connected = False

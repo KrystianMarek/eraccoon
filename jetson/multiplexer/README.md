@@ -133,7 +133,7 @@ docker run -d \
 from examples.client_example import MotorProxyClient
 
 # Connect to proxy
-client = MotorProxyClient('/tmp/motor_controller.sock')
+client = MotorProxyClient('/tmp/motor-proxy/motor_controller.sock')
 client.connect()
 
 # Control robot
@@ -153,7 +153,7 @@ python main.py --help
 Options:
   --serial-port PORT    Arduino serial port (default: auto-detect)
   --baud-rate RATE      Serial baud rate (default: 115200)
-  --socket-path PATH    Unix socket path (default: /tmp/motor_controller.sock)
+  --socket-path PATH    Unix socket path (default: /tmp/motor-proxy/motor_controller.sock)
   --log-level LEVEL     Logging level (DEBUG, INFO, WARNING, ERROR)
   --log-file FILE       Log to file (optional)
   --daemon              Run as daemon
@@ -535,8 +535,8 @@ Unix socket permissions are set to `0666` by default. For production deployments
 
 ```bash
 # Restrict to specific group
-chgrp motor-users /tmp/motor_controller.sock
-chmod 660 /tmp/motor_controller.sock
+chgrp motor-users /tmp/motor-proxy/motor_controller.sock
+chmod 660 /tmp/motor-proxy/motor_controller.sock
 ```
 
 ## 🔍 Monitoring & Debugging
@@ -545,7 +545,7 @@ chmod 660 /tmp/motor_controller.sock
 
 ```bash
 # Check if socket exists
-test -S /tmp/motor_controller.sock && echo "Socket OK" || echo "Socket Missing"
+test -S /tmp/motor-proxy/motor_controller.sock && echo "Socket OK" || echo "Socket Missing"
 
 # Check container health (Docker)
 docker inspect motor-proxy --format='{{.State.Health.Status}}'
@@ -588,7 +588,7 @@ client.get_status()  # Returns stats including:
 
 2. **Socket Already in Use**
    ```bash
-   rm /tmp/motor_controller.sock
+   rm /tmp/motor-proxy/motor_controller.sock
    # Or use different socket path
    ```
 

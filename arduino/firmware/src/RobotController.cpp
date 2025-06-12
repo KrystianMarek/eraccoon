@@ -78,28 +78,28 @@ void RobotController::update() {
     static unsigned long lastDisconnectCheck = 0;
     if (currentTime - lastDisconnectCheck > 500) {
         lastDisconnectCheck = currentTime;
-
+        // Temporarily disabled aggressive disconnection reboot for debugging
+        /*
         // If we had an active connection but can no longer write to serial, reboot immediately
         if (serialWasActive && !Serial.availableForWrite()) {
             Serial.println("🔌 SERIAL PORT DISCONNECTED: Port no longer writable");
             Serial.println("🔄 AUTO-REBOOT: Immediate restart for clean state...");
-            delay(500);
-            NVIC_SystemReset();
+            // Trigger immediate reboot by jumping to bootloader or reset vector
+            // This is a hard reset that ensures clean state for new connection
+            asm volatile ("jmp 0");
         }
+        */
     }
 
     // Only check for timeout after connection has been stable for at least 5 seconds
     // This prevents rebooting during initial handshake or rapid command sequences
     if (serialWasActive && (currentTime - connectionStartTime > 5000)) {
         // Auto-reboot logic: if we had serial activity but haven't seen any for 5 seconds, reboot
-        // Reduced from 8 to 5 seconds for faster response
-        if (currentTime - lastSerialActivity > 5000) {
-            Serial.println("🔌 SERIAL TIMEOUT: No activity for 5 seconds after stable connection");
+        // Temporarily extending timeout to 10 seconds for debugging
+        if (currentTime - lastSerialActivity > 10000) {
             Serial.println("🔄 AUTO-REBOOT: Restarting Arduino for clean state...");
-            delay(1000); // Give time for message to be sent
-
-            // Trigger Arduino reset using NVIC system reset (ARM Cortex-M)
-            NVIC_SystemReset();
+            // Trigger immediate reboot
+            asm volatile ("jmp 0");
         }
     }
 

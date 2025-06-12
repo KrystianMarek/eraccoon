@@ -95,8 +95,8 @@ Examples:
 
     parser.add_argument(
         '--socket-path',
-        default='/tmp/motor_controller.sock',
-        help='Unix socket path (default: /tmp/motor_controller.sock)'
+        default='/tmp/motor-proxy/motor_controller.sock',
+        help='Unix socket path (default: /tmp/motor-proxy/motor_controller.sock)'
     )
 
     parser.add_argument(

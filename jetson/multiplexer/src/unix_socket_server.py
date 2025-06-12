@@ -54,7 +54,7 @@ class MotorProxyServer:
     Handles client connections, command queuing, and status broadcasting.
     """
 
-    def __init__(self, socket_path: str = '/tmp/motor_controller.sock',
+    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock',
                  serial_port: Optional[str] = None, baud_rate: int = 115200):
         self.socket_path = socket_path
         self.server_socket: Optional[socket.socket] = None
