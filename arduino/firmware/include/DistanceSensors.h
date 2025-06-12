@@ -14,6 +14,13 @@ class DistanceSensors {
     DistanceSensors();
     bool frontCollison();
     bool rearCollison();
+    void checkDistance();
+
+    // Getters for distance values
+    int getFrontLeftDistance() { return distance_fl; }
+    int getFrontRightDistance() { return distance_fr; }
+    int getRearLeftDistance() { return distance_rl; }
+    int getRearRightDistance() { return distance_rr; }
 
   private:
     Ticker *ticker;
@@ -23,7 +30,6 @@ class DistanceSensors {
     int distance_fr;
     int distance_rl;
     int distance_rr;
-    void checkDistance();
 };
 
 #endif //DISTANCESENSORS_H
