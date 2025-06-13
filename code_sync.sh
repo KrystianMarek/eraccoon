@@ -6,4 +6,5 @@ rsync -ar --progress arduino jetson \
   --exclude jetson/remote/.idea \
   --exclude jetson/remote/.venv \
   --exclude jetson/multiplexer/.venv \
+  --exclude jetson/multiplexer/motor-controller-proxy-latest.tar \
   "${ER_SSH_USER}@${ER_JETSON_IP}:~/eraccoon"
