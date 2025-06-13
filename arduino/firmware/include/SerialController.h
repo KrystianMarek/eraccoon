@@ -20,7 +20,7 @@ public:
     SerialController();
 
     SerialCommand getCommand();
-    void sendSensorData(DistanceSensors *sensors);
+    bool sendSensorData(DistanceSensors *sensors);
     bool hasCommand();
 
 private:

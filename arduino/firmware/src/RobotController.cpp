@@ -18,8 +18,8 @@ RobotController::RobotController(
     this->distanceSensors = distanceSensors;
     this->lcd = lcd;
 
-    // Send sensor data every 500ms to PC (reduce frequency to avoid flooding)
-    this->sensorReportTicker = new Ticker(500);
+    // Send sensor data every 100ms to PC as requested
+    this->sensorReportTicker = new Ticker(100);
 
     // Update LCD every 200ms
     this->lcdUpdateTicker = new Ticker(200);
@@ -31,12 +31,20 @@ RobotController::RobotController(
 
     // Initialize safety system state
     this->wasPreviouslyBlocked = false;
+
+    // Initialize watchdog
+    this->watchdogActive = false;
+    this->watchdogHardwareStarted = false;
+    this->lastWatchdogKick = 0;
+    initializeWatchdog();
 }
 
 void RobotController::update() {
-    // Send sensor data periodically to PC
-    if (sensorReportTicker->tick()) {
+        // Send sensor data periodically to PC only when watchdog is active (serial connected)
+    if (sensorReportTicker->tick() && watchdogActive) {
+        // Send sensor data and kick watchdog
         serialController->sendSensorData(distanceSensors);
+        kickWatchdog(); // Kick watchdog when sending sensor data
     }
 
     // Update LCD display periodically
@@ -44,11 +52,9 @@ void RobotController::update() {
         updateLCDDisplay();
     }
 
-            // Smart disconnection detection and auto-reboot logic
-    static unsigned long lastSerialActivity = 0;
+            // Smart disconnection detection and watchdog logic
     static bool serialWasActive = false;
     static unsigned long lastAliveMessage = 0;
-    static unsigned long connectionStartTime = 0;
     unsigned long currentTime = millis();
 
     // Send periodic alive message
@@ -66,12 +72,16 @@ void RobotController::update() {
         if (!serialWasActive) {
             Serial.println("🔌 SERIAL CONNECTED: External controller detected");
             serialWasActive = true;
-            connectionStartTime = currentTime;
         }
 
-        // Only reset activity timer for non-keepalive commands
-        if (!cmd.valid || cmd.direction != KEEPALIVE_CMD) {
-            lastSerialActivity = currentTime;
+        // Always activate watchdog when we have serial activity
+        if (!watchdogActive) {
+            activateWatchdog();
+        }
+
+        // Kick watchdog on any serial activity (commands or keepalive)
+        if (watchdogActive) {
+            kickWatchdog();
         }
     }
 
@@ -92,17 +102,8 @@ void RobotController::update() {
         */
     }
 
-    // Only check for timeout after connection has been stable for at least 5 seconds
-    // This prevents rebooting during initial handshake or rapid command sequences
-    if (serialWasActive && (currentTime - connectionStartTime > 5000)) {
-        // Auto-reboot logic: if we had serial activity but haven't seen any for 5 seconds, reboot
-        // Temporarily extending timeout to 10 seconds for debugging
-        if (currentTime - lastSerialActivity > 10000) {
-                         Serial.println("🔄 AUTO-REBOOT: Restarting Arduino for clean state...");
-             // Trigger immediate reboot using ARM system reset
-             NVIC_SystemReset();
-        }
-    }
+        // Watchdog will handle automatic reboot if serial communication fails
+    // No manual timeout logic needed - watchdog provides more robust protection
 
     if (cmd.valid) {
         // Check if it's a reset command
@@ -152,6 +153,25 @@ void RobotController::update() {
             Serial.println("🕹️  USING JOYSTICK CONTROL");
             lastJoystickDebugTime = currentTime;
         }
+
+                // Only deactivate watchdog after a reasonable timeout without serial activity
+        static unsigned long lastSerialActivity = 0;
+        static bool timeoutStarted = false;
+
+        if (watchdogActive && serialWasActive) {
+            if (!timeoutStarted) {
+                lastSerialActivity = currentTime;
+                timeoutStarted = true;
+            } else if (currentTime - lastSerialActivity > 3000) { // 3 second timeout
+                Serial.println("🔌 SERIAL TIMEOUT: No commands for 3 seconds");
+                deactivateWatchdog();
+                serialWasActive = false;
+                timeoutStarted = false;
+            }
+        } else {
+            timeoutStarted = false;
+        }
+
         handleJoystickControl();
     }
 }
@@ -440,4 +460,51 @@ void RobotController::resetAllStates() {
     delay(100);
 
     Serial.println("🔄 RESET: All states cleared, system ready");
+}
+
+void RobotController::initializeWatchdog() {
+    // Don't start the hardware watchdog yet - wait for serial communication
+    Serial.println("🐕 WATCHDOG: Ready to start when serial connection detected");
+}
+
+void RobotController::activateWatchdog() {
+    if (!watchdogHardwareStarted) {
+        // Start the hardware watchdog only when first needed
+        if (mbed::Watchdog::get_instance().start(WATCHDOG_TIMEOUT_MS)) {
+            watchdogHardwareStarted = true;
+            watchdogActive = true;
+            lastWatchdogKick = millis();
+            Serial.println("🐕 WATCHDOG: STARTED - Serial communication mode");
+        } else {
+            Serial.println("❌ WATCHDOG: Failed to start hardware watchdog");
+        }
+    } else if (!watchdogActive) {
+        // Reactivate kicking if hardware was already started
+        watchdogActive = true;
+        lastWatchdogKick = millis();
+        Serial.println("🐕 WATCHDOG: REACTIVATED - Serial communication resumed");
+    }
+}
+
+void RobotController::deactivateWatchdog() {
+    if (watchdogActive) {
+        watchdogActive = false;
+        // Note: Hardware watchdog keeps running, but we stop kicking it
+        // This will cause a reboot in 5 seconds if no serial activity resumes
+        Serial.println("🐕 WATCHDOG: DEACTIVATED - Will reboot in 5s if no serial activity");
+    }
+}
+
+void RobotController::kickWatchdog() {
+    if (watchdogActive) {
+        mbed::Watchdog::get_instance().kick();
+        lastWatchdogKick = millis();
+
+        // Debug output every 2 seconds
+        static unsigned long lastKickDebug = 0;
+        if (millis() - lastKickDebug > 2000) {
+            Serial.println("🐕 WATCHDOG: Kicked - Serial communication active");
+            lastKickDebug = millis();
+        }
+    }
 }

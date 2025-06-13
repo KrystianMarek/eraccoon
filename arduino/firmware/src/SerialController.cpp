@@ -23,11 +23,12 @@ SerialCommand SerialController::getCommand() {
     return cmd;
 }
 
-void SerialController::sendSensorData(DistanceSensors *sensors) {
+bool SerialController::sendSensorData(DistanceSensors *sensors) {
     // Check distances and send data
     sensors->checkDistance();
 
     // Send sensor data in JSON format for easy parsing
+    // Always attempt to send - if connection is broken, watchdog will handle it
     Serial.print("{\"sensors\":{");
     Serial.print("\"front_left\":");
     Serial.print(sensors->getFrontLeftDistance());
@@ -42,6 +43,9 @@ void SerialController::sendSensorData(DistanceSensors *sensors) {
     Serial.print(",\"rear_collision\":");
     Serial.print(sensors->rearCollison() ? "true" : "false");
     Serial.println("}}");
+
+    // Always return true - let watchdog handle connection failures
+    return true;
 }
 
 bool SerialController::hasCommand() {

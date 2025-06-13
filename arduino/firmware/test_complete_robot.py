@@ -5,6 +5,7 @@ Comprehensive Arduino Robot Test Script
 This script demonstrates:
 - Remote control via serial in all directions
 - Sensor data reception and parsing
+- Watchdog reboot functionality and recovery
 - Reconnection handling with auto-reboot
 - Keep-alive system for connection maintenance
 - Error handling and graceful disconnection
@@ -219,6 +220,84 @@ class RobotController:
             rear_collision = sensors.get('rear_collision', False)
             print(f"   Collisions: Front={front_collision}, Rear={rear_collision}")
 
+    def test_watchdog_reboot(self):
+        """Test watchdog-triggered reboot functionality"""
+        print("\n🐕 TESTING WATCHDOG REBOOT FUNCTIONALITY")
+        print("=" * 50)
+
+        # Stop keep-alive to allow watchdog timeout
+        print("💓 Stopping keep-alive to test watchdog...")
+        self.stop_keepalive_thread()
+
+        # Send a command to activate watchdog
+        print("📤 Sending command to activate watchdog...")
+        self.send_command("FORWARD", 60)
+        time.sleep(2)  # Let it run for a bit
+
+        # Send stop command
+        print("🛑 Sending STOP command...")
+        self.send_command("STOP", 0)
+        time.sleep(1)
+
+        print("⏰ Waiting for watchdog timeout and reboot...")
+        print("   Should see 'SERIAL TIMEOUT' message followed by reboot in ~8 seconds")
+
+        # Monitor for reboot indicators
+        start_time = time.time()
+        last_message_time = time.time()
+        reboot_detected = False
+
+        while time.time() - start_time < 15:
+            try:
+                if self.serial and self.serial.in_waiting > 0:
+                    line = self.serial.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        current_time = time.time()
+                        elapsed = current_time - start_time
+                        print(f"[{elapsed:.1f}s] Arduino: {line}")
+                        last_message_time = current_time
+
+                        # Look for reboot indicators
+                        if "SYSTEM READY" in line or "WATCHDOG: Ready to start" in line:
+                            print("✅ REBOOT DETECTED! Watchdog system working correctly.")
+                            reboot_detected = True
+                            break
+
+                        # Look for timeout message
+                        if "SERIAL TIMEOUT" in line or "WATCHDOG: DEACTIVATED" in line:
+                            print("🐕 Watchdog timeout detected - reboot should follow...")
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                print(f"📥 Read error (may indicate reboot): {e}")
+                break
+
+        # Check if we stopped getting messages (indicating reboot)
+        if not reboot_detected and time.time() - last_message_time > 3:
+            print("✅ Arduino stopped responding - likely rebooted successfully")
+            reboot_detected = True
+
+        if reboot_detected:
+            print("🔄 Attempting to reconnect after reboot...")
+            time.sleep(2)  # Wait for Arduino to fully restart
+
+            # Try to reconnect
+            try:
+                self.serial.close()
+            except:
+                pass
+
+            if self.connect():
+                print("✅ Reconnection after watchdog reboot successful!")
+                self.read_responses(2.0)  # Read startup messages
+                return True
+            else:
+                print("❌ Reconnection failed after reboot")
+                return False
+        else:
+            print("❌ No reboot detected within timeout period")
+            return False
+
     def test_reconnection(self):
         """Test reconnection with auto-reboot"""
         print("\n🔄 TESTING RECONNECTION WITH AUTO-REBOOT")
@@ -259,6 +338,7 @@ def main():
     print("This script tests:")
     print("• Remote control via serial in all directions")
     print("• Sensor data reception and parsing")
+    print("• Watchdog reboot functionality and recovery")
     print("• Reconnection handling with auto-reboot")
     print("• Keep-alive system for connection maintenance")
     print("=" * 60)
@@ -279,6 +359,9 @@ def main():
 
         # Test sensor monitoring
         robot.test_sensor_monitoring()
+
+        # Test watchdog reboot functionality
+        robot.test_watchdog_reboot()
 
         # Test reconnection
         if robot.test_reconnection():

@@ -47,11 +47,21 @@ private:
     // Safety system state tracking
     bool wasPreviouslyBlocked;
 
+    // Watchdog for serial communication monitoring
+    bool watchdogActive;
+    bool watchdogHardwareStarted;
+    unsigned long lastWatchdogKick;
+    static const unsigned long WATCHDOG_TIMEOUT_MS = 5000; // 5 second watchdog timeout
+
     void handleJoystickControl();
     bool isMovementSafe(MotionDirection direction);
     bool hasActiveSerialCommand();
     void updateLCDDisplay();
     void resetAllStates();
+    void initializeWatchdog();
+    void activateWatchdog();
+    void deactivateWatchdog();
+    void kickWatchdog();
 };
 
 #endif //ROBOTCONTROLLER_H
