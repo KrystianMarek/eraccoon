@@ -2,7 +2,6 @@
 #include "DistanceSensors.h"
 #include "CytronMotorDriver.h"
 #include "MyLCD.h"
-#include "Pad.h"
 #include "MotorController.h"
 #include "JoystickController.h"
 #include "SerialController.h"
@@ -32,7 +31,6 @@ SerialController *serialController;
 RobotController *robotController;
 DistanceSensors *distanceSensors;
 MyLCD *lcd;
-Pad *pad;
 
 void setup() {
   // Initialize Serial communication first

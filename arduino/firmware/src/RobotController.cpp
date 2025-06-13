@@ -3,6 +3,7 @@
 //
 
 #include "RobotController.h"
+#include "mbed.h"
 
 RobotController::RobotController(
     MotorController *motorController,
@@ -97,9 +98,9 @@ void RobotController::update() {
         // Auto-reboot logic: if we had serial activity but haven't seen any for 5 seconds, reboot
         // Temporarily extending timeout to 10 seconds for debugging
         if (currentTime - lastSerialActivity > 10000) {
-            Serial.println("🔄 AUTO-REBOOT: Restarting Arduino for clean state...");
-            // Trigger immediate reboot
-            asm volatile ("jmp 0");
+                         Serial.println("🔄 AUTO-REBOOT: Restarting Arduino for clean state...");
+             // Trigger immediate reboot using ARM system reset
+             NVIC_SystemReset();
         }
     }
 
