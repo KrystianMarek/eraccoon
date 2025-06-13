@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from src.unix_socket_server import MotorProxyServer
+from src import __version__, get_build_info
 
 
 def setup_logging(log_level: str = 'INFO', log_file: str = None):
@@ -122,10 +123,17 @@ Examples:
     # Setup logging
     logger = setup_logging(args.log_level, args.log_file)
 
+    # Get build information
+    build_info = get_build_info()
+
     # Print startup banner
     print("=" * 60)
     print("🤖 Motor Controller Proxy/Multiplexer Service")
     print("=" * 60)
+    print(f"📦 Version: {build_info['version']}")
+    print(f"🏗️  Build Date: {build_info['build_date']}")
+    print(f"🌲 Git Branch: {build_info['git_branch']}")
+    print(f"📝 Git Commit: {build_info['git_commit']}")
     print(f"📡 Serial Port: {args.serial_port or 'Auto-detect'}")
     print(f"⚡ Baud Rate: {args.baud_rate}")
     print(f"🔌 Socket Path: {args.socket_path}")

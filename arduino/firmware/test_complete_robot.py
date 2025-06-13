@@ -246,6 +246,12 @@ class RobotController:
         start_time = time.time()
         last_message_time = time.time()
         reboot_detected = False
+        timeout_detected = False
+        deactivation_detected = False
+
+        # Track message patterns that indicate reboot
+        startup_messages = ["LCD: Force update after reset", "JOYSTICK DEBUG", "USING JOYSTICK CONTROL"]
+        startup_count = 0
 
         while time.time() - start_time < 15:
             try:
@@ -257,29 +263,64 @@ class RobotController:
                         print(f"[{elapsed:.1f}s] Arduino: {line}")
                         last_message_time = current_time
 
-                        # Look for reboot indicators
+                        # Look for timeout and deactivation messages
+                        if "SERIAL TIMEOUT" in line:
+                            print("🐕 Watchdog timeout detected - reboot should follow...")
+                            timeout_detected = True
+
+                        if "WATCHDOG: DEACTIVATED" in line:
+                            print("🐕 Watchdog deactivated - reboot should follow...")
+                            deactivation_detected = True
+
+                        # Look for startup indicators after timeout
+                        if timeout_detected and deactivation_detected:
+                            for startup_msg in startup_messages:
+                                if startup_msg in line:
+                                    startup_count += 1
+                                    if startup_count >= 2:  # Multiple startup messages = reboot
+                                        print("✅ REBOOT DETECTED! Multiple startup messages after watchdog timeout.")
+                                        reboot_detected = True
+                                        break
+
+                            # Also look for joystick mode activation (indicates clean restart)
+                            if "USING JOYSTICK CONTROL" in line and elapsed > 5:
+                                print("✅ REBOOT DETECTED! Arduino returned to joystick mode after timeout.")
+                                reboot_detected = True
+                                break
+
+                        # Look for explicit reboot indicators
                         if "SYSTEM READY" in line or "WATCHDOG: Ready to start" in line:
                             print("✅ REBOOT DETECTED! Watchdog system working correctly.")
                             reboot_detected = True
                             break
 
-                        # Look for timeout message
-                        if "SERIAL TIMEOUT" in line or "WATCHDOG: DEACTIVATED" in line:
-                            print("🐕 Watchdog timeout detected - reboot should follow...")
+                        if reboot_detected:
+                            break
                 else:
                     time.sleep(0.1)
             except Exception as e:
                 print(f"📥 Read error (may indicate reboot): {e}")
+                # Serial errors often indicate the device rebooted
+                if timeout_detected and deactivation_detected:
+                    print("✅ REBOOT DETECTED! Serial error after watchdog timeout likely indicates reboot.")
+                    reboot_detected = True
                 break
 
-        # Check if we stopped getting messages (indicating reboot)
-        if not reboot_detected and time.time() - last_message_time > 3:
-            print("✅ Arduino stopped responding - likely rebooted successfully")
+        # Check if we stopped getting messages after timeout (indicating reboot)
+        if not reboot_detected and timeout_detected and deactivation_detected:
+            silence_duration = time.time() - last_message_time
+            if silence_duration > 2:
+                print(f"✅ REBOOT DETECTED! Arduino silent for {silence_duration:.1f}s after watchdog timeout.")
+                reboot_detected = True
+
+        # Final check: if we saw timeout and deactivation, assume reboot worked
+        if not reboot_detected and timeout_detected and deactivation_detected:
+            print("✅ REBOOT LIKELY OCCURRED! Saw timeout and deactivation messages.")
             reboot_detected = True
 
         if reboot_detected:
             print("🔄 Attempting to reconnect after reboot...")
-            time.sleep(2)  # Wait for Arduino to fully restart
+            time.sleep(3)  # Wait longer for Arduino to fully restart
 
             # Try to reconnect
             try:

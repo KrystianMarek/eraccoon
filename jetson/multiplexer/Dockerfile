@@ -55,6 +55,8 @@ echo "🏗️  Architecture: $(uname -m)"\n\
 echo "🐍 Python version: $(python --version)"\n\
 echo "👤 Running as: $(whoami)"\n\
 echo "📂 Working directory: $(pwd)"\n\
+echo "📦 Build Info:"\n\
+python -c "import sys; sys.path.insert(0, '"'"'src'"'"'); from src import get_build_info; info = get_build_info(); print(f'"'"'   Version: {info[\"version\"]}'"'"'); print(f'"'"'   Build Date: {info[\"build_date\"]}'"'"'); print(f'"'"'   Git Branch: {info[\"git_branch\"]}'"'"'); print(f'"'"'   Git Commit: {info[\"git_commit\"]}'"'"')" 2>/dev/null || echo "   Version info unavailable"\n\
 echo "🔧 Environment variables:"\n\
 env | grep -E "^(SERIAL_|SOCKET_|LOG_)" | sort || echo "   No motor proxy environment variables set"\n\
 echo ""\n\
@@ -92,8 +94,8 @@ if [ "$DAEMON_MODE" = "true" ]; then\n\
 fi\n\
 \n\
 # Start the motor proxy\n\
-echo "🎯 Starting with arguments: ${ARGS[*]}"\n\
-python main.py "${ARGS[@]}" &\n\
+echo "🎯 Starting with arguments: ${ARGS[*]} $@"\n\
+python main.py "${ARGS[@]}" "$@" &\n\
 child=$!\n\
 \n\
 # Wait for child process\n\
@@ -120,7 +122,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Labels for metadata
 LABEL maintainer="Motor Proxy Team" \
-      version="1.0.0" \
+      version="2.1.0" \
       description="Arduino Motor Controller Proxy/Multiplexer Service" \
       target="Nvidia Jetson Nano"
 
