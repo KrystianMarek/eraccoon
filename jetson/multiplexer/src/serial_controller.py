@@ -82,11 +82,9 @@ class SerialController:
         # Connection monitoring and recovery
         self.last_activity = time.time()
         self.connection_time: Optional[float] = None  # Track when connection was established
-        self.keepalive_interval = 3  # Set to 3 as in test_complete_robot.py
-        self.grace_period = 6.0  # Wait 6 seconds after connection before starting keepalive
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
-        self.reconnect_delay = 2.0  # Seconds between reconnect attempts (wait for Arduino reboot + startup)
+        self.reconnect_delay = 2.0  # Seconds between reconnect attempts (Arduino full reboot cycle ~12s)
         self._keepalive_thread: Optional[threading.Thread] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._stop_keepalive = threading.Event()
@@ -122,18 +120,16 @@ class SerialController:
         # Sort ports to ensure consistent ordering
         available_ports = sorted(available_ports)
 
-        logger.debug(f"Scanning ports: {available_ports}")
+        if self.state == ConnectionState.RECONNECTING:
+            logger.info(f"Reconnection port scan - Available ports: {available_ports}")
+        else:
+            logger.debug(f"Scanning ports: {available_ports}")
 
         for port in available_ports:
-            try:
-                # Test if port is accessible
-                test_ser = serial.Serial(port, self.baud_rate, timeout=1)
-                test_ser.close()
-                logger.debug(f"Found working Arduino port: {port}")
+            # Just check if port exists - don't open it (would trigger Arduino reboot)
+            if os.path.exists(port):
+                logger.debug(f"Found Arduino port: {port}")
                 return port
-            except Exception as e:
-                logger.debug(f"Port {port} test failed: {e}")
-                continue
 
         logger.warning("No Arduino ports found")
         return None
@@ -171,15 +167,12 @@ class SerialController:
                 stopbits=serial.STOPBITS_ONE
             )
 
-            # Wait for Arduino to initialize
-            time.sleep(3)
-
             # Start reading thread first
             self._running = True
             self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._read_thread.start()
 
-                        # Start keepalive thread immediately (critical for Arduino watchdog activation)
+            # Start keepalive thread immediately (critical for Arduino watchdog activation)
             self._stop_keepalive.clear()
             self._keepalive_thread = threading.Thread(target=self._simple_keepalive_loop, daemon=True)
             self._keepalive_thread.start()
@@ -269,9 +262,17 @@ class SerialController:
             time.sleep(self.reconnect_delay)
 
             # Find Arduino (may be on different port after reboot)
+            logger.info("Scanning for Arduino ports during reconnection...")
             new_port = self.find_arduino_port()
             if not new_port:
                 logger.warning("No Arduino found during reconnection attempt")
+                # Log available ports for debugging
+                import glob
+                available_ports = []
+                for pattern in ['/dev/ttyACM*', '/dev/ttyUSB*']:
+                    available_ports.extend(glob.glob(pattern))
+                logger.warning(f"Available ports during reconnection: {sorted(available_ports)}")
+
                 self.reconnect_attempts += 1
                 self.state = ConnectionState.ERROR
                 self._notify_connection_change()
@@ -281,6 +282,9 @@ class SerialController:
             if new_port != self.current_port:
                 logger.info(f"Arduino rebooted: {self.current_port} -> {new_port}")
                 self.current_port = new_port
+                # Give Arduino extra time to complete initialization after reboot
+                logger.info("Waiting for Arduino to complete reboot initialization...")
+                time.sleep(1)
 
             # Attempt connection
             self.serial_conn = serial.Serial(
@@ -291,9 +295,6 @@ class SerialController:
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
-
-            # Wait for Arduino startup
-            time.sleep(3)
 
             # Restart reading thread if it died
             if not self._read_thread or not self._read_thread.is_alive():
