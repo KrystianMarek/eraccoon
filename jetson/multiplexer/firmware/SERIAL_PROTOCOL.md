@@ -1,0 +1,199 @@
+# Arduino Robot Serial Protocol
+
+## Overview
+This document describes the serial communication protocol for the 4-wheel Arduino robot with modular architecture. The robot supports dual control modes: onboard joystick and external serial commands via PC.
+
+## Connection Parameters
+- **Baud Rate**: 115200
+- **Data Bits**: 8
+- **Parity**: None
+- **Stop Bits**: 1
+- **Flow Control**: None
+- **Port**: `/dev/ttyACM*` (Linux/Mac) or `COM*` (Windows)
+
+## Control Priority
+1. **Serial Commands** (highest priority) - PC control overrides joystick
+2. **Onboard Joystick** (fallback) - Active when no serial commands present
+3. **Safety System** - Can block unsafe movements regardless of control source
+
+## Command Protocol
+
+### Command Format
+All commands follow the format: `COMMAND:VALUE\n`
+- Commands are case-insensitive
+- Must end with newline character (`\n`)
+- Carriage return (`\r`) is ignored
+
+### Movement Commands
+| Command | Value Range | Description | Example |
+|---------|-------------|-------------|---------|
+| `FORWARD` | 0-255 | Move forward at specified speed | `FORWARD:60\n` |
+| `BACKWARD` | 0-255 | Move backward at specified speed | `BACKWARD:50\n` |
+| `LEFT` | 0-255 | Turn left at specified speed | `LEFT:40\n` |
+| `RIGHT` | 0-255 | Turn right at specified speed | `RIGHT:40\n` |
+| `FORWARD_LEFT` | 0-255 | Move forward-left diagonal | `FORWARD_LEFT:45\n` |
+| `FORWARD_RIGHT` | 0-255 | Move forward-right diagonal | `FORWARD_RIGHT:45\n` |
+| `BACKWARD_LEFT` | 0-255 | Move backward-left diagonal | `BACKWARD_LEFT:35\n` |
+| `BACKWARD_RIGHT` | 0-255 | Move backward-right diagonal | `BACKWARD_RIGHT:35\n` |
+| `STOP` | 0 | Stop all motors immediately | `STOP:0\n` |
+
+### System Commands
+| Command | Value | Description | Example |
+|---------|-------|-------------|---------|
+| `RESET` | 0 | Reset robot state and return to joystick control | `RESET:0\n` |
+| `KEEPALIVE` | 0 | Prevent auto-reboot (for connection maintenance) | `KEEPALIVE:0\n` |
+
+### Speed Values
+- **Range**: 0-255 (8-bit PWM values)
+- **Recommended**: 30-80 for normal operation
+- **0**: Stop/No movement
+- **255**: Maximum speed (use with caution)
+
+## Response Protocol
+
+### Command Acknowledgment
+Arduino sends debug messages for received commands:
+```
+RECEIVED: 'FORWARD:60'
+PARSED: FORWARD:60 -> 1
+🤖 NEW SERIAL CMD: 1 at speed 60
+🚗 MOTOR: Executing FORWARD at speed 60
+```
+
+### Sensor Data (JSON Format)
+Sent automatically every 500ms during operation:
+```json
+{
+  "sensors": {
+    "front_left": 2147483647,
+    "front_right": 1331,
+    "rear_left": 242,
+    "rear_right": 380,
+    "front_collision": false,
+    "rear_collision": false
+  }
+}
+```
+
+#### Sensor Data Fields
+- **Distance values**: Measured in arbitrary units (higher = farther)
+- **2147483647**: Maximum sensor reading (no obstacle detected)
+- **Low values (< 100)**: Close obstacles detected
+- **front_collision/rear_collision**: Boolean safety flags
+
+### Status Messages
+Arduino sends various status messages with emoji prefixes:
+- `🚀 SYSTEM READY` - Arduino ready for commands
+- `💓 ALIVE` - Periodic heartbeat (every 30 seconds)
+- `🔌 SERIAL CONNECTED` - External controller detected
+- `🕹️ USING JOYSTICK CONTROL` - Fallback to joystick mode
+- `🛑 STOP CMD - EXECUTED` - Stop command processed
+- `⚠️ OBSTACLE DETECTED` - Safety system active
+
+## Auto-Reboot System
+
+### Purpose
+Ensures clean state between different control sessions by automatically rebooting Arduino when external controller disconnects.
+
+### Behavior
+1. **Connection Detection**: Arduino detects when external controller connects
+2. **Grace Period**: 5-second grace period after connection to prevent premature reboot
+3. **Disconnection Detection**:
+   - Port closure detection (immediate)
+   - Activity timeout (5 seconds of no commands)
+4. **Auto-Reboot**: Arduino resets itself using `NVIC_SystemReset()`
+5. **Device Re-enumeration**: USB device changes (e.g., `/dev/ttyACM0` → `/dev/ttyACM1`)
+
+### Keep-Alive Support
+- Send `KEEPALIVE:0\n` periodically to prevent timeout
+- Keep-alive commands don't reset activity timer (by design)
+- Useful for maintaining connection during idle periods
+
+## Safety System
+
+### Obstacle Detection
+- **4 ultrasonic sensors**: Front-left, front-right, rear-left, rear-right
+- **Collision thresholds**: Configurable distance limits
+- **Movement blocking**: Prevents unsafe movements when obstacles detected
+
+### Safety Behavior
+- **Forward movement**: Blocked if front sensors detect obstacles
+- **Backward movement**: Blocked if rear sensors detect obstacles
+- **Turning**: Generally allowed (robot can turn in place)
+- **Override**: No manual override - safety is always enforced
+
+## Error Handling
+
+### Invalid Commands
+- Unknown commands default to `STOP`
+- Invalid speed values (outside 0-255) are rejected
+- Malformed commands (no colon) are ignored
+
+### Connection Issues
+- **Timeout**: Commands expire after 1000ms if not refreshed
+- **Buffer overflow**: Serial buffer cleared periodically
+- **Port errors**: Trigger immediate auto-reboot
+
+## Example Communication Session
+
+```
+# Connection established
+Arduino: 🚀 SYSTEM READY - Accepting connections
+
+# Send movement command
+PC: FORWARD:60\n
+Arduino: RECEIVED: 'FORWARD:60'
+Arduino: 🤖 NEW SERIAL CMD: 1 at speed 60
+Arduino: 🚗 MOTOR: Executing FORWARD at speed 60
+
+# Sensor data (automatic)
+Arduino: {"sensors":{"front_left":2147483647,"front_right":1331,...}}
+
+# Stop command
+PC: STOP:0\n
+Arduino: RECEIVED: 'STOP:0'
+Arduino: 🛑 STOP CMD - EXECUTED, NOT PERSISTING
+
+# Connection closed by PC
+Arduino: 🔌 SERIAL TIMEOUT: No activity for 5 seconds
+Arduino: 🔄 AUTO-REBOOT: Restarting Arduino for clean state...
+# Arduino resets, device re-enumerates
+```
+
+## Integration Notes
+
+### For Control Applications
+1. **Connect** to Arduino at 115200 baud
+2. **Wait** for `SYSTEM READY` message
+3. **Send commands** as needed with proper formatting
+4. **Parse JSON** sensor data for obstacle avoidance
+5. **Handle disconnection** gracefully (expect auto-reboot)
+
+### For Multiplexer Services
+- **Single connection**: Only one controller can connect at a time
+- **Connection arbitration**: Implement queuing/priority system
+- **State preservation**: Consider caching last known state
+- **Reconnection handling**: Account for device re-enumeration after reboot
+
+## Hardware Configuration
+
+### Motors
+- **4 Cytron MD motors**: PWM control on pins 2-3, 6-7, 4-5, 8-9
+- **Motor arrangement**: Front-left, front-right, rear-left, rear-right
+- **Movement patterns**: Tank-style steering with differential speeds
+
+### Sensors
+- **4 ultrasonic sensors**: Distance measurement for obstacle detection
+- **Update rate**: 500ms sensor data transmission
+- **Range**: Variable based on sensor model and environment
+
+### Joystick
+- **4-direction joystick**: Connected to pins 22-25 with INPUT_PULLUP
+- **Priority**: Lower than serial commands
+- **Functionality**: Full directional control including diagonals
+
+## Firmware Version
+- **Architecture**: Modular design with separate controllers
+- **Components**: MotorController, JoystickController, SerialController, RobotController
+- **Memory usage**: ~11.7% RAM, ~15.1% Flash on Arduino Giga R1 WiFi
+- **Auto-reboot**: Implemented with dual detection (port closure + timeout)
