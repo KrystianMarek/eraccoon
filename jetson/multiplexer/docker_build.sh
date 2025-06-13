@@ -71,6 +71,73 @@ detect_architecture() {
     print_status "Host architecture detected: $HOST_ARCH"
 }
 
+# Function to generate build information
+generate_build_info() {
+    local build_info_file="src/build_info.json"
+
+    print_status "Collecting git information..."
+
+    # Get git information
+    local git_commit="unknown"
+    local git_branch="unknown"
+    local git_root="unknown"
+    local git_dirty=false
+
+    if command -v git &> /dev/null; then
+        # Get git root
+        if git_root_output=$(git rev-parse --show-toplevel 2>/dev/null); then
+            git_root="$git_root_output"
+        fi
+
+        # Get commit hash
+        if git_commit_output=$(git rev-parse --short HEAD 2>/dev/null); then
+            git_commit="$git_commit_output"
+        fi
+
+        # Get branch name
+        if git_branch_output=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
+            git_branch="$git_branch_output"
+        fi
+
+        # Check if working directory is dirty
+        if ! git diff --quiet 2>/dev/null; then
+            git_dirty=true
+        fi
+    fi
+
+    # Get current timestamp
+    local build_date=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+    local build_timestamp=$(date -u +%s)
+
+    # Create build info JSON
+    cat > "$build_info_file" << EOF
+{
+  "version": "2.1.0",
+  "build_date": "$build_date",
+  "build_timestamp": $build_timestamp,
+  "git_commit": "$git_commit",
+  "git_branch": "$git_branch",
+  "git_root": "$git_root",
+  "git_dirty": $git_dirty,
+  "build_environment": "container"
+}
+EOF
+
+    if [ -f "$build_info_file" ]; then
+        print_success "Build info written to: $build_info_file"
+        print_status "📦 Version: 2.1.0"
+        print_status "🌲 Branch: $git_branch"
+        print_status "📝 Commit: $git_commit"
+        print_status "🏗️  Date: $build_date"
+        if [ "$git_dirty" = true ]; then
+            print_warning "⚠️  Working directory has uncommitted changes"
+        fi
+    else
+        print_error "Failed to create build info file"
+        exit 1
+    fi
+}
+
 # Function to setup buildx for multi-arch builds
 setup_buildx() {
     print_status "Setting up Docker Buildx for multi-architecture builds..."
@@ -628,6 +695,10 @@ main() {
     echo "================================"
     echo "🚀 Motor Controller Proxy Build"
     echo "================================"
+
+    # Generate build information
+    print_status "Generating build information..."
+    generate_build_info
 
     # Check prerequisites
     check_docker

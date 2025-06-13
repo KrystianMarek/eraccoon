@@ -133,7 +133,13 @@ Examples:
     print(f"📦 Version: {build_info['version']}")
     print(f"🏗️  Build Date: {build_info['build_date']}")
     print(f"🌲 Git Branch: {build_info['git_branch']}")
-    print(f"📝 Git Commit: {build_info['git_commit']}")
+    commit_info = build_info['git_commit']
+    if build_info.get('git_dirty', False):
+        commit_info += " (dirty)"
+    print(f"📝 Git Commit: {commit_info}")
+    print(f"🏭 Environment: {build_info.get('build_environment', 'unknown')}")
+    if build_info['git_root'] != 'unknown':
+        print(f"📂 Git Root: {build_info['git_root']}")
     print(f"📡 Serial Port: {args.serial_port or 'Auto-detect'}")
     print(f"⚡ Baud Rate: {args.baud_rate}")
     print(f"🔌 Socket Path: {args.socket_path}")

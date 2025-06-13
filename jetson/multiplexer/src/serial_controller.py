@@ -86,7 +86,7 @@ class SerialController:
         self.grace_period = 6.0  # Wait 6 seconds after connection before starting keepalive
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
-        self.reconnect_delay = 5.0  # Seconds between reconnect attempts (wait for Arduino reboot + startup)
+        self.reconnect_delay = 2.0  # Seconds between reconnect attempts (wait for Arduino reboot + startup)
         self._keepalive_thread: Optional[threading.Thread] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._stop_keepalive = threading.Event()
@@ -174,12 +174,12 @@ class SerialController:
             # Wait for Arduino to initialize
             time.sleep(3)
 
-            # Start reading thread
+            # Start reading thread first
             self._running = True
             self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._read_thread.start()
 
-            # Start simple keepalive thread immediately (essential to prevent Arduino auto-reboot)
+                        # Start keepalive thread immediately (critical for Arduino watchdog activation)
             self._stop_keepalive.clear()
             self._keepalive_thread = threading.Thread(target=self._simple_keepalive_loop, daemon=True)
             self._keepalive_thread.start()
@@ -472,6 +472,7 @@ class SerialController:
                                     logger.debug("Sent keepalive command")
                         except Exception as e:
                             logger.warning(f"Keepalive failed: {e}")
+                            self._handle_connection_error()
                             break
                     else:
                         logger.debug("Skipping keepalive - not connected")
