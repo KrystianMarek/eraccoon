@@ -98,31 +98,32 @@ class MotorProxyClient:
 
             if msg_type == 'welcome':
                 self.client_id = data.get('client_id')
-                print(f"🎉 Welcome! Client ID: {self.client_id}")
+                print(f"✅ Connected as {self.client_id}")
 
             elif msg_type == 'status':
                 arduino_state = data.get('arduino_state', 'unknown')
                 arduino_connected = data.get('arduino_connected', False)
-                current_port = data.get('arduino_current_port', 'unknown')
-                total_clients = data.get('total_clients', 0)
-                print(f"📊 Status - Arduino: {arduino_state} ({'✅' if arduino_connected else '❌'}), Port: {current_port}, Clients: {total_clients}")
+                if arduino_connected:
+                    print(f"📊 Arduino: {arduino_state}")
+                else:
+                    print(f"⚠️  Arduino: {arduino_state} (disconnected)")
 
             elif msg_type == 'command_response':
                 command = data.get('command', '')
+                value = data.get('value', 0)
                 success = data.get('success', False)
-                print(f"🎮 Command {command}: {'✅ Success' if success else '❌ Failed'}")
+                status = "✅" if success else "❌"
+                print(f"🎮 {status} {command}:{value}")
 
             elif msg_type == 'sensor_data':
-                sensor_data = data.get('data')
-                if sensor_data:
-                    print(f"📡 Sensors - FL: {sensor_data.get('front_left', 0)}, "
-                          f"FR: {sensor_data.get('front_right', 0)}, "
-                          f"RL: {sensor_data.get('rear_left', 0)}, "
-                          f"RR: {sensor_data.get('rear_right', 0)}")
+                # Don't print sensor data - too noisy for command interface
+                pass
 
             elif msg_type == 'arduino_message':
                 message_text = data.get('message', '')
-                print(f"🤖 Arduino: {message_text}")
+                # Only show important Arduino messages, skip routine ones
+                if any(keyword in message_text.upper() for keyword in ['ERROR', 'WARNING', 'TIMEOUT', 'DISCONNECTED', 'CONNECTED', 'READY']):
+                    print(f"🤖 Arduino: {message_text}")
 
             elif msg_type == 'error':
                 error_msg = data.get('message', 'Unknown error')
@@ -130,11 +131,11 @@ class MotorProxyClient:
 
             elif msg_type == 'arduino_connection':
                 state = data.get('state', 'unknown')
-                current_port = data.get('current_port', 'unknown')
-                print(f"🔄 Arduino connection changed: {state} (port: {current_port})")
+                if state in ['connected', 'disconnected']:
+                    print(f"🔄 Arduino: {state}")
 
             elif msg_type == 'pong':
-                print("🏓 Pong received")
+                print("🏓 Pong")
 
         except json.JSONDecodeError:
             print(f"❌ Invalid JSON received: {message}")
@@ -197,64 +198,38 @@ def interactive_demo():
     time.sleep(1)
 
     try:
-        while True:
-            print("\n🎮 Available Commands:")
-            print("  w - Move Forward")
-            print("  s - Move Backward")
-            print("  a - Turn Left")
-            print("  d - Turn Right")
-            print("  x - Stop")
-            print("  r - Reset")
-            print("  i - Get Status")
-            print("  p - Ping")
-            print("  t - Get Sensor Data")
-            print("  q - Quit")
+        print("\n🎮 Commands: w/s=forward/back, a/d=left/right, x=stop, r=reset, i=status, q=quit")
 
-            choice = input("\nEnter command: ").lower().strip()
+        while True:
+            choice = input("\n> ").lower().strip()
 
             if choice == 'w':
-                speed = input("Speed (default 60): ").strip()
-                speed = int(speed) if speed.isdigit() else 60
-                client.move_forward(speed)
-
+                client.move_forward(60)
             elif choice == 's':
-                speed = input("Speed (default 60): ").strip()
-                speed = int(speed) if speed.isdigit() else 60
-                client.move_backward(speed)
-
+                client.move_backward(60)
             elif choice == 'a':
-                speed = input("Speed (default 40): ").strip()
-                speed = int(speed) if speed.isdigit() else 40
-                client.turn_left(speed)
-
+                client.turn_left(40)
             elif choice == 'd':
-                speed = input("Speed (default 40): ").strip()
-                speed = int(speed) if speed.isdigit() else 40
-                client.turn_right(speed)
-
+                client.turn_right(40)
             elif choice == 'x':
                 client.stop()
-
             elif choice == 'r':
                 client.reset()
-
             elif choice == 'i':
                 client.get_status()
-
             elif choice == 'p':
                 client.ping()
-
             elif choice == 't':
                 client.get_sensor_data()
-
             elif choice == 'q':
                 break
-
+            elif choice == '':
+                continue
             else:
                 print("❌ Invalid command")
 
             # Small delay to see responses
-            time.sleep(0.5)
+            time.sleep(0.3)
 
     except KeyboardInterrupt:
         print("\n🛑 Interrupted by user")

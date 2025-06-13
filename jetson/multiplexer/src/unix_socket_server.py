@@ -168,6 +168,11 @@ class MotorProxyServer:
                     logger.info(f"New client connected: {client_id}")
                     self.stats['total_connections'] += 1
 
+                    # Log current sensor data flow status for debugging
+                    sensor_data = self.serial_controller.get_sensor_data()
+                    sensor_count = getattr(self.serial_controller, 'sensor_count', 0)
+                    logger.info(f"Client connection - Current sensor count: {sensor_count}, Last sensor: {sensor_data is not None}")
+
                     # Create client info
                     client_info = ClientInfo(
                         client_id=client_id,
@@ -176,6 +181,9 @@ class MotorProxyServer:
                         state=ClientState.CONNECTED,
                         last_activity=time.time()
                     )
+
+                                        # Set socket timeout to prevent blocking recv() calls
+                    client_socket.settimeout(1.0)  # 1 second timeout
 
                     with self.clients_lock:
                         self.clients[client_id] = client_info
@@ -415,7 +423,22 @@ class MotorProxyServer:
                 if client_id in self.clients:
                     client = self.clients[client_id]
                     message = json.dumps(data) + '\n'
-                    client.socket.send(message.encode('utf-8'))
+                    message_bytes = message.encode('utf-8')
+
+                    # Use sendall with timeout to prevent blocking
+                    original_timeout = client.socket.gettimeout()
+                    try:
+                        client.socket.settimeout(0.1)  # 100ms timeout for send
+                        client.socket.sendall(message_bytes)
+                    finally:
+                        client.socket.settimeout(original_timeout)
+
+        except socket.timeout:
+            logger.warning(f"Send timeout to client {client_id} - client may be slow")
+            # Don't disconnect on timeout, just skip this message
+        except (ConnectionResetError, BrokenPipeError, OSError) as e:
+            logger.info(f"Client {client_id} disconnected: {e}")
+            self._disconnect_client(client_id)
         except Exception as e:
             logger.error(f"Error sending to client {client_id}: {e}")
             self._disconnect_client(client_id)
@@ -423,9 +446,12 @@ class MotorProxyServer:
     def _broadcast_to_clients(self, data: Dict[str, Any], exclude_client: Optional[str] = None):
         """Broadcast data to all connected clients"""
         with self.clients_lock:
-            for client_id in list(self.clients.keys()):
-                if client_id != exclude_client:
-                    self._send_to_client(client_id, data)
+            client_ids = list(self.clients.keys())
+
+        # Send to clients outside the lock to prevent blocking
+        for client_id in client_ids:
+            if client_id != exclude_client:
+                self._send_to_client(client_id, data)
 
     def _disconnect_client(self, client_id: str):
         """Disconnect and remove a client"""
@@ -447,11 +473,22 @@ class MotorProxyServer:
     # Serial controller event handlers
     def _on_sensor_data(self, sensor_data: SensorData):
         """Handle new sensor data from Arduino"""
-        self._broadcast_to_clients({
-            'type': 'sensor_data',
-            'data': asdict(sensor_data),
-            'timestamp': time.time()
-        })
+        # Debug: Log sensor data broadcasting
+        with self.clients_lock:
+            client_count = len(self.clients)
+
+        if client_count > 0:
+            logger.debug(f"Broadcasting sensor data to {client_count} clients")
+
+            # Broadcast sensor data
+            self._broadcast_to_clients({
+                'type': 'sensor_data',
+                'data': asdict(sensor_data),
+                'timestamp': time.time()
+            })
+        else:
+            # No clients connected, no need to broadcast
+            pass
 
     def _on_status_message(self, message: str):
         """Handle status message from Arduino"""

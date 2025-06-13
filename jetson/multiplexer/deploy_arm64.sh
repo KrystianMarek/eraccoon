@@ -28,6 +28,7 @@ show_usage() {
     echo "Deployment types (for deploy action):"
     echo "  quick      - Quick start with auto-detection (default)"
     echo "  production - Full production setup with logging"
+    echo "  debug      - Debug mode with verbose logging"
     echo "  secure     - Secure setup with specific device access"
     echo ""
     echo "Examples:"
@@ -209,6 +210,24 @@ ssh $USERNAME@$JETSON_IP "rm /tmp/$IMAGE_FILE"
                     -v /var/log/motor-proxy:/var/log/motor-proxy \\
                     -e LOG_LEVEL=INFO \\
                     -e LOG_FILE=/var/log/motor-proxy/motor-proxy.log \\
+                    $IMAGE_TAG"
+                ;;
+            "debug")
+                echo "🐛 Deploying with debug configuration..."
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/motor-proxy"
+                ssh $USERNAME@$JETSON_IP "docker run -d \\
+                    --name $CONTAINER_NAME \\
+                    --restart unless-stopped \\
+                    --privileged \\
+                    --health-cmd='test -S /tmp/motor-proxy/motor_controller.sock' \\
+                    --health-interval=30s \\
+                    --health-timeout=10s \\
+                    --health-retries=3 \\
+                    -v /dev:/dev \\
+                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/log/motor-proxy:/var/log/motor-proxy \\
+                    -e LOG_LEVEL=DEBUG \\
+                    -e LOG_FILE=/var/log/motor-proxy/motor-proxy-debug.log \\
                     $IMAGE_TAG"
                 ;;
             "secure")

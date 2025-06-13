@@ -14,7 +14,7 @@ import threading
 import logging
 import glob
 import os
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 
@@ -89,24 +89,14 @@ class SerialController:
         self._monitor_thread: Optional[threading.Thread] = None
         self._stop_keepalive = threading.Event()
 
-    def find_arduino_port(self) -> Optional[str]:
-        """
-        Find available Arduino port.
-        Returns the preferred port if available, otherwise scans for Arduino devices.
-        """
-        # If user specified a port and it exists, try it first
-        if self.preferred_port:
-            if os.path.exists(self.preferred_port):
-                try:
-                    test_ser = serial.Serial(self.preferred_port, self.baud_rate, timeout=1)
-                    test_ser.close()
-                    logger.debug(f"Preferred port {self.preferred_port} is available")
-                    return self.preferred_port
-                except Exception as e:
-                    logger.debug(f"Preferred port {self.preferred_port} test failed: {e}")
+        # Connection health tracking
+        self.last_sensor_time = 0.0
+        self.sensor_count = 0
+        self.expected_sensor_interval = 0.1  # Arduino sends every 100ms
 
-        # Scan for available Arduino ports
-        # Arduino devices typically appear as /dev/ttyACM* or /dev/ttyUSB*
+    def _scan_arduino_ports(self) -> List[str]:
+        """Scan for available Arduino ports without opening them"""
+        import glob
         patterns = ['/dev/ttyACM*', '/dev/ttyUSB*']
 
         # On Windows, check COM ports
@@ -117,8 +107,21 @@ class SerialController:
         for pattern in patterns:
             available_ports.extend(glob.glob(pattern))
 
-        # Sort ports to ensure consistent ordering
-        available_ports = sorted(available_ports)
+        return sorted(available_ports)
+
+    def find_arduino_port(self) -> Optional[str]:
+        """
+        Find available Arduino port.
+        Returns the preferred port if available, otherwise scans for Arduino devices.
+        """
+        # If user specified a port and it exists, try it first
+        if self.preferred_port:
+            if os.path.exists(self.preferred_port):
+                logger.debug(f"Preferred port {self.preferred_port} is available")
+                return self.preferred_port
+
+        # Scan for available Arduino ports
+        available_ports = self._scan_arduino_ports()
 
         if self.state == ConnectionState.RECONNECTING:
             logger.info(f"Reconnection port scan - Available ports: {available_ports}")
@@ -184,6 +187,11 @@ class SerialController:
             self.state = ConnectionState.CONNECTED
             self.connection_time = time.time()  # Record connection time
             self.reconnect_attempts = 0  # Reset reconnect counter
+
+            # Reset sensor tracking for new connection
+            self.sensor_count = 0
+            self.last_sensor_time = 0.0
+
             self._notify_connection_change()
             logger.info(f"Successfully connected to Arduino on {port}")
             return True
@@ -267,11 +275,8 @@ class SerialController:
             if not new_port:
                 logger.warning("No Arduino found during reconnection attempt")
                 # Log available ports for debugging
-                import glob
-                available_ports = []
-                for pattern in ['/dev/ttyACM*', '/dev/ttyUSB*']:
-                    available_ports.extend(glob.glob(pattern))
-                logger.warning(f"Available ports during reconnection: {sorted(available_ports)}")
+                available_ports = self._scan_arduino_ports()
+                logger.warning(f"Available ports during reconnection: {available_ports}")
 
                 self.reconnect_attempts += 1
                 self.state = ConnectionState.ERROR
@@ -313,6 +318,11 @@ class SerialController:
             self.state = ConnectionState.CONNECTED
             self.connection_time = time.time()  # Record reconnection time
             self.reconnect_attempts = 0
+
+            # Reset sensor tracking for new connection
+            self.sensor_count = 0
+            self.last_sensor_time = 0.0
+
             self._notify_connection_change()
             logger.info(f"Successfully reconnected to Arduino on {new_port}")
             return True
@@ -346,14 +356,20 @@ class SerialController:
         """Background thread for reading Arduino responses"""
         logger.debug("Starting serial read loop")
 
-        while self._running and self._is_connected():
+        while self._running:
             try:
+                # Check if we have a valid serial connection
+                if not self.serial_conn or not self.serial_conn.is_open:
+                    logger.debug("Serial connection not available, stopping read loop")
+                    break
+
+                # Read data if available (like your working example)
                 if self.serial_conn.in_waiting > 0:
                     line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         self._process_response(line)
                 else:
-                    time.sleep(0.01)  # Small delay to prevent busy waiting
+                    time.sleep(0.05)  # Match your working example timing
 
             except Exception as e:
                 logger.error(f"Error in read loop: {e}")
@@ -365,22 +381,45 @@ class SerialController:
     def _process_response(self, line: str):
         """Process a response line from Arduino"""
         try:
+            # Log all Arduino output for debugging
+            logger.debug(f"Arduino raw: {repr(line)}")
+
             # Try to parse as JSON (sensor data)
             if line.startswith('{'):
                 data = json.loads(line)
                 if 'sensors' in data:
                     sensor_data = SensorData.from_json(data)
                     self.last_sensor_data = sensor_data
+
+                    # Track sensor reception for connection health
+                    self.last_sensor_time = time.time()
+                    self.sensor_count += 1
+
+                    # Log milestone sensor counts
+                    if self.sensor_count in [1, 10, 50, 100, 500] or self.sensor_count % 1000 == 0:
+                        logger.info(f"📊 Received {self.sensor_count} sensor readings - connection healthy")
+
+                    # Log first few sensor readings for debugging
+                    if self.sensor_count <= 5:
+                        logger.info(f"📊 Sensor #{self.sensor_count}: FL:{data['sensors'].get('front_left')} FR:{data['sensors'].get('front_right')} RL:{data['sensors'].get('rear_left')} RR:{data['sensors'].get('rear_right')}")
+
                     if self.on_sensor_data:
                         self.on_sensor_data(sensor_data)
                     return
 
-            # Handle status messages
+            # Handle status messages - log ALL of them for debugging
             if self.on_status_message:
                 self.on_status_message(line)
 
-            # Log important status messages
-            if any(indicator in line for indicator in ['🚀', '💓', '🔌', '🕹️', '🛑', '⚠️']):
+            # Log ALL Arduino messages during initial connection for debugging
+            if self.sensor_count < 10:
+                logger.info(f"Arduino: {line}")
+            elif any(indicator in line for indicator in ['🚀', '💓', '🔌', '🛑', '⚠️']):
+                logger.info(f"Arduino status: {line}")
+            elif '🕹️' in line and 'DEBUG' in line:
+                # Reduce noise from repetitive joystick debug messages
+                logger.debug(f"Arduino: {line}")
+            elif '🕹️' in line:
                 logger.info(f"Arduino status: {line}")
             else:
                 logger.debug(f"Arduino: {line}")
@@ -389,15 +428,45 @@ class SerialController:
             # Not JSON, treat as status message
             if self.on_status_message:
                 self.on_status_message(line)
-            logger.debug(f"Arduino: {line}")
+
+            # Log non-JSON messages during initial connection
+            if self.sensor_count < 10:
+                logger.info(f"Arduino: {line}")
+            else:
+                logger.debug(f"Arduino: {line}")
         except Exception as e:
             logger.error(f"Error processing response '{line}': {e}")
 
     def _is_connected(self) -> bool:
-        """Check if serial connection is active"""
-        return (self.serial_conn is not None and
-                self.serial_conn.is_open and
-                self.state == ConnectionState.CONNECTED)
+        """Check if Arduino connection is healthy based on sensor data and port existence"""
+        if not self.serial_conn or not self.serial_conn.is_open:
+            return False
+
+        if self.state != ConnectionState.CONNECTED:
+            return False
+
+        # Check if the device file still exists (Arduino hasn't rebooted)
+        if self.current_port and not os.path.exists(self.current_port):
+            logger.warning(f"Arduino port {self.current_port} disappeared - Arduino rebooted")
+            return False
+
+        # During initial connection (first 30 seconds), be very patient
+        # Arduino needs time to activate watchdog and start sending sensors
+        if self.connection_time and (time.time() - self.connection_time) < 30.0:
+            return True
+
+        # After initial period, check if we're receiving sensor data (Arduino sends every 100ms)
+        if self.last_sensor_time > 0:
+            time_since_sensor = time.time() - self.last_sensor_time
+            if time_since_sensor > 5.0:  # No sensor data for 5 seconds = problem
+                logger.warning(f"No sensor data for {time_since_sensor:.1f}s - connection may be dead")
+                return False
+        else:
+            # No sensor data received yet after initial period = problem
+            logger.warning("No sensor data received after 30s - Arduino may not be responding to keepalive")
+            return False
+
+        return True
 
     def _handle_connection_error(self):
         """Handle connection errors"""
@@ -458,27 +527,24 @@ class SerialController:
 
         while not self._stop_keepalive.is_set():
             try:
-                # Wait 3 seconds (Arduino watchdog expects communication every 3 seconds)
-                if self._stop_keepalive.wait(3.0):
+                # Wait 2.5 seconds (faster than Arduino's 3-second timeout to prevent race condition)
+                if self._stop_keepalive.wait(2.5):
                     break  # Stop event was set
 
-                # Send keepalive if still connected
-                if self._running and self.state == ConnectionState.CONNECTED:
-                    if self._is_connected():
-                        try:
-                            with self._write_lock:
-                                if self.serial_conn and self.serial_conn.is_open:
-                                    cmd_str = "KEEPALIVE:0\n"
-                                    self.serial_conn.write(cmd_str.encode('utf-8'))
-                                    logger.debug("Sent keepalive command")
-                        except Exception as e:
-                            logger.warning(f"Keepalive failed: {e}")
-                            self._handle_connection_error()
-                            break
-                    else:
-                        logger.debug("Skipping keepalive - not connected")
+                # Send keepalive if we have a serial connection (simpler check)
+                if self._running and self.serial_conn and self.serial_conn.is_open:
+                    try:
+                        with self._write_lock:
+                            cmd_str = "KEEPALIVE:0\n"
+                            self.serial_conn.write(cmd_str.encode('utf-8'))
+                            logger.debug("Sent keepalive command")
+                    except Exception as e:
+                        logger.warning(f"Keepalive failed: {e}")
+                        self._handle_connection_error()
+                        break
                 else:
-                    logger.debug(f"Skipping keepalive - running:{self._running}, state:{self.state}")
+                    logger.debug(f"Skipping keepalive - running:{self._running}, serial_open:{self.serial_conn and self.serial_conn.is_open}")
+
             except Exception as e:
                 logger.error(f"Keepalive loop error: {e}")
                 break
