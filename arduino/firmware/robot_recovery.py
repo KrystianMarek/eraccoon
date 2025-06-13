@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 import serial
 import time
+import glob
 
-SERIAL_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
+
+def find_arduino_port():
+    """Find available Arduino port"""
+    ports = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*') + glob.glob('COM*')
+    for port in sorted(ports):
+        try:
+            test_ser = serial.Serial(port, BAUD_RATE, timeout=1)
+            test_ser.close()
+            return port
+        except:
+            continue
+    return None
 
 def recover_robot():
     """Try to recover an unresponsive robot"""
@@ -12,7 +24,14 @@ def recover_robot():
 
     try:
         print("1. 📡 Attempting connection...")
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=3)
+        # Find Arduino port
+        port = find_arduino_port()
+        if not port:
+            print("❌ No Arduino found")
+            return
+
+        # Open serial connection
+        ser = serial.Serial(port, BAUD_RATE, timeout=3)
         print("   ✅ Serial connected")
 
         # Try multiple recovery methods
