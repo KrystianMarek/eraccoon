@@ -13,7 +13,6 @@
 enum CommandType {
     TANK_COMMAND,
     MECANUM_COMMAND,
-    LEGACY_COMMAND,
     INVALID_COMMAND
 };
 
@@ -39,7 +38,6 @@ private:
 
     SerialCommand parseCommand(String command);
     SerialCommand parseJsonCommand(String command);
-    SerialCommand parseLegacyCommand(String command);
     MotionDirection parseDirection(String dir);
 };
 

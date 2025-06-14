@@ -1,7 +1,7 @@
 # Arduino Robot Serial Protocol
 
 ## Overview
-This document describes the serial communication protocol for the 4-wheel Arduino robot with modular architecture. The robot supports dual control modes: onboard joystick and external serial commands via PC.
+This document describes the serial communication protocol for the 4-wheel Arduino robot with modular architecture. The robot supports dual control modes: onboard joystick and external JSON commands via PC.
 
 ## Connection Parameters
 - **Baud Rate**: 115200
@@ -19,45 +19,84 @@ This document describes the serial communication protocol for the 4-wheel Arduin
 ## Command Protocol
 
 ### Command Format
-All commands follow the format: `COMMAND:VALUE\n`
-- Commands are case-insensitive
-- Must end with newline character (`\n`)
-- Carriage return (`\r`) is ignored
+All commands must be in JSON format and end with newline character (`\n`):
 
-### Movement Commands
+```json
+{"type": "tank", "command": "FORWARD", "value": 60}
+{"type": "mecanum", "motors": {"left_front": 100, "left_rear": -100, "right_front": -100, "right_rear": 100}}
+```
+
+### Tank Movement Commands
 | Command | Value Range | Description | Example |
 |---------|-------------|-------------|---------|
-| `FORWARD` | 0-255 | Move forward at specified speed | `FORWARD:60\n` |
-| `BACKWARD` | 0-255 | Move backward at specified speed | `BACKWARD:50\n` |
-| `LEFT` | 0-255 | Turn left at specified speed | `LEFT:40\n` |
-| `RIGHT` | 0-255 | Turn right at specified speed | `RIGHT:40\n` |
-| `FORWARD_LEFT` | 0-255 | Move forward-left diagonal | `FORWARD_LEFT:45\n` |
-| `FORWARD_RIGHT` | 0-255 | Move forward-right diagonal | `FORWARD_RIGHT:45\n` |
-| `BACKWARD_LEFT` | 0-255 | Move backward-left diagonal | `BACKWARD_LEFT:35\n` |
-| `BACKWARD_RIGHT` | 0-255 | Move backward-right diagonal | `BACKWARD_RIGHT:35\n` |
-| `STOP` | 0 | Stop all motors immediately | `STOP:0\n` |
+| `FORWARD` | 0-255 | Move forward at specified speed | `{"type": "tank", "command": "FORWARD", "value": 60}` |
+| `BACKWARD` | 0-255 | Move backward at specified speed | `{"type": "tank", "command": "BACKWARD", "value": 50}` |
+| `LEFT` | 0-255 | Turn left at specified speed | `{"type": "tank", "command": "LEFT", "value": 40}` |
+| `RIGHT` | 0-255 | Turn right at specified speed | `{"type": "tank", "command": "RIGHT", "value": 40}` |
+| `FORWARD_LEFT` | 0-255 | Move forward-left diagonal | `{"type": "tank", "command": "FORWARD_LEFT", "value": 45}` |
+| `FORWARD_RIGHT` | 0-255 | Move forward-right diagonal | `{"type": "tank", "command": "FORWARD_RIGHT", "value": 45}` |
+| `BACKWARD_LEFT` | 0-255 | Move backward-left diagonal | `{"type": "tank", "command": "BACKWARD_LEFT", "value": 35}` |
+| `BACKWARD_RIGHT` | 0-255 | Move backward-right diagonal | `{"type": "tank", "command": "BACKWARD_RIGHT", "value": 35}` |
+| `STOP` | 0 | Stop all motors immediately | `{"type": "tank", "command": "STOP", "value": 0}` |
+
+### Mecanum Movement Commands
+Direct motor control for advanced movements:
+
+```json
+{
+  "type": "mecanum",
+  "motors": {
+    "left_front": -100,
+    "left_rear": 100,
+    "right_front": 100,
+    "right_rear": -100
+  }
+}
+```
+
+**Motor Speed Range**: -255 to 255 (negative values = reverse)
+
+**Basic Movement Patterns**:
+- **Forward**: `LF:100, LR:100, RF:100, RR:100`
+- **Backward**: `LF:-100, LR:-100, RF:-100, RR:-100`
+- **Strafe Right**: `LF:-100, LR:100, RF:100, RR:-100`
+- **Strafe Left**: `LF:100, LR:-100, RF:-100, RR:100`
+- **Rotate Clockwise**: `LF:-100, LR:-100, RF:100, RR:100`
+- **Rotate Counter-Clockwise**: `LF:100, LR:100, RF:-100, RR:-100`
 
 ### System Commands
-| Command | Value | Description | Example |
-|---------|-------|-------------|---------|
-| `RESET` | 0 | Reset robot state and return to joystick control | `RESET:0\n` |
-| `KEEPALIVE` | 0 | Prevent auto-reboot (for connection maintenance) | `KEEPALIVE:0\n` |
+| Command | Description | Example |
+|---------|-------------|---------|
+| `RESET` | Reset robot state and return to joystick control | `{"type": "tank", "command": "RESET", "value": 0}` |
+| `KEEPALIVE` | Prevent auto-reboot (for connection maintenance) | `{"type": "tank", "command": "KEEPALIVE", "value": 0}` |
 
 ### Speed Values
-- **Range**: 0-255 (8-bit PWM values)
+- **Tank Commands**: 0-255 (8-bit PWM values)
+- **Mecanum Commands**: -255 to 255 (signed for direction)
 - **Recommended**: 30-80 for normal operation
 - **0**: Stop/No movement
-- **255**: Maximum speed (use with caution)
+- **255/-255**: Maximum speed (use with caution)
 
 ## Response Protocol
 
 ### Command Acknowledgment
 Arduino sends debug messages for received commands:
 ```
-RECEIVED: 'FORWARD:60'
-PARSED: FORWARD:60 -> 1
-🤖 NEW SERIAL CMD: 1 at speed 60
+PARSED TANK JSON: FORWARD:60 -> 1
+🤖 NEW TANK CMD: FORWARD at speed 60
 🚗 MOTOR: Executing FORWARD at speed 60
+
+PARSED MECANUM JSON: LF:100 LR:-100 RF:-100 RR:100
+🤖 NEW MECANUM CMD: LF:100 LR:-100 RF:-100 RR:100
+🚗 MECANUM MOTORS: LF:100 LR:-100 RF:-100 RR:100
+```
+
+### Error Messages
+```
+INVALID COMMAND FORMAT: Expected JSON, got: 'FORWARD:60'
+JSON PARSE ERROR: Invalid JSON syntax
+MISSING TYPE FIELD IN JSON
+INVALID MOTOR SPEEDS IN MECANUM JSON (must be -255 to 255)
 ```
 
 ### Sensor Data (JSON Format)
@@ -105,7 +144,7 @@ Ensures clean state between different control sessions by automatically rebootin
 5. **Device Re-enumeration**: USB device changes (e.g., `/dev/ttyACM0` → `/dev/ttyACM1`)
 
 ### Keep-Alive Support
-- Send `KEEPALIVE:0\n` periodically to prevent timeout
+- Send `{"type": "tank", "command": "KEEPALIVE", "value": 0}` periodically to prevent timeout
 - Keep-alive commands don't reset activity timer (by design)
 - Useful for maintaining connection during idle periods
 
@@ -125,9 +164,10 @@ Ensures clean state between different control sessions by automatically rebootin
 ## Error Handling
 
 ### Invalid Commands
-- Unknown commands default to `STOP`
-- Invalid speed values (outside 0-255) are rejected
-- Malformed commands (no colon) are ignored
+- Non-JSON commands are rejected
+- Unknown command types default to invalid
+- Invalid speed values (outside valid ranges) are rejected
+- Malformed JSON is ignored with error message
 
 ### Connection Issues
 - **Timeout**: Commands expire after 1000ms if not refreshed
@@ -140,18 +180,23 @@ Ensures clean state between different control sessions by automatically rebootin
 # Connection established
 Arduino: 🚀 SYSTEM READY - Accepting connections
 
-# Send movement command
-PC: FORWARD:60\n
-Arduino: RECEIVED: 'FORWARD:60'
-Arduino: 🤖 NEW SERIAL CMD: 1 at speed 60
+# Send tank movement command
+PC: {"type": "tank", "command": "FORWARD", "value": 60}
+Arduino: PARSED TANK JSON: FORWARD:60 -> 1
+Arduino: 🤖 NEW TANK CMD: FORWARD at speed 60
 Arduino: 🚗 MOTOR: Executing FORWARD at speed 60
+
+# Send mecanum movement command
+PC: {"type": "mecanum", "motors": {"left_front": -100, "left_rear": 100, "right_front": 100, "right_rear": -100}}
+Arduino: PARSED MECANUM JSON: LF:-100 LR:100 RF:100 RR:-100
+Arduino: 🤖 NEW MECANUM CMD: LF:-100 LR:100 RF:100 RR:-100
+Arduino: 🚗 MECANUM MOTORS: LF:-100 LR:100 RF:100 RR:-100
 
 # Sensor data (automatic)
 Arduino: {"sensors":{"front_left":2147483647,"front_right":1331,...}}
 
 # Stop command
-PC: STOP:0\n
-Arduino: RECEIVED: 'STOP:0'
+PC: {"type": "tank", "command": "STOP", "value": 0}
 Arduino: 🛑 STOP CMD - EXECUTED, NOT PERSISTING
 
 # Connection closed by PC
@@ -165,35 +210,31 @@ Arduino: 🔄 AUTO-REBOOT: Restarting Arduino for clean state...
 ### For Control Applications
 1. **Connect** to Arduino at 115200 baud
 2. **Wait** for `SYSTEM READY` message
-3. **Send commands** as needed with proper formatting
+3. **Send JSON commands** with proper formatting
 4. **Parse JSON** sensor data for obstacle avoidance
-5. **Handle disconnection** gracefully (expect auto-reboot)
 
-### For Multiplexer Services
-- **Single connection**: Only one controller can connect at a time
-- **Connection arbitration**: Implement queuing/priority system
-- **State preservation**: Consider caching last known state
-- **Reconnection handling**: Account for device re-enumeration after reboot
+### Python Example
+```python
+import serial
+import json
 
-## Hardware Configuration
+ser = serial.Serial('/dev/ttyACM0', 115200)
 
-### Motors
-- **4 Cytron MD motors**: PWM control on pins 2-3, 6-7, 4-5, 8-9
-- **Motor arrangement**: Front-left, front-right, rear-left, rear-right
-- **Movement patterns**: Tank-style steering with differential speeds
+# Tank movement
+tank_cmd = json.dumps({"type": "tank", "command": "FORWARD", "value": 60})
+ser.write(f"{tank_cmd}\n".encode())
 
-### Sensors
-- **4 ultrasonic sensors**: Distance measurement for obstacle detection
-- **Update rate**: 500ms sensor data transmission
-- **Range**: Variable based on sensor model and environment
+# Mecanum strafing
+mecanum_cmd = json.dumps({
+    "type": "mecanum",
+    "motors": {
+        "left_front": -100,
+        "left_rear": 100,
+        "right_front": 100,
+        "right_rear": -100
+    }
+})
+ser.write(f"{mecanum_cmd}\n".encode())
+```
 
-### Joystick
-- **4-direction joystick**: Connected to pins 22-25 with INPUT_PULLUP
-- **Priority**: Lower than serial commands
-- **Functionality**: Full directional control including diagonals
-
-## Firmware Version
-- **Architecture**: Modular design with separate controllers
-- **Components**: MotorController, JoystickController, SerialController, RobotController
-- **Memory usage**: ~11.7% RAM, ~15.1% Flash on Arduino Giga R1 WiFi
-- **Auto-reboot**: Implemented with dual detection (port closure + timeout)
+This protocol provides a consistent, structured approach to robot control with support for both simple tank-style movements and advanced mecanum wheel capabilities.

@@ -2,8 +2,7 @@
 """
 Arduino Robot Serial Control Test
 
-Tests both legacy and new JSON-based motor commands:
-- Legacy format: "FORWARD:60"
+Tests JSON-based motor commands:
 - Tank JSON format: {"type": "tank", "command": "FORWARD", "value": 60}
 - Mecanum JSON format: {"type": "mecanum", "motors": {"left_front": 100, ...}}
 """
@@ -26,7 +25,7 @@ def find_arduino_port():
     return None
 
 def test_serial_control():
-    """Test serial control with both legacy and JSON formats"""
+    """Test serial control with JSON formats"""
     port = find_arduino_port()
     if not port:
         print("❌ No Arduino found")
@@ -41,18 +40,8 @@ def test_serial_control():
         time.sleep(2)
         print("🚀 Starting motor control tests\n")
 
-        # Test movements with different formats
+        # Test movements with JSON formats only
         movements = [
-            # Legacy format tests
-            ("LEGACY", "FORWARD:60", "Forward movement (legacy)"),
-            ("LEGACY", "BACKWARD:50", "Backward movement (legacy)"),
-            ("LEGACY", "LEFT:45", "Left turn (legacy)"),
-            ("LEGACY", "RIGHT:45", "Right turn (legacy)"),
-            ("LEGACY", "FORWARD_LEFT:40", "Forward-left diagonal (legacy)"),
-            ("LEGACY", "FORWARD_RIGHT:40", "Forward-right diagonal (legacy)"),
-            ("LEGACY", "BACKWARD_LEFT:35", "Backward-left diagonal (legacy)"),
-            ("LEGACY", "BACKWARD_RIGHT:35", "Backward-right diagonal (legacy)"),
-
             # Tank JSON format tests
             ("TANK_JSON", {"type": "tank", "command": "FORWARD", "value": 60}, "Forward movement (tank JSON)"),
             ("TANK_JSON", {"type": "tank", "command": "BACKWARD", "value": 50}, "Backward movement (tank JSON)"),
@@ -68,15 +57,10 @@ def test_serial_control():
             print(f"\n   🎯 Testing {description}")
             print(f"   📤 Sending command...")
 
-            # Send command based on type
-            if cmd_type == "LEGACY":
-                cmd_str = f"{command}\n"
-                ser.write(cmd_str.encode('utf-8'))
-                print(f"   📝 Sent: {command}")
-            elif cmd_type == "TANK_JSON":
-                cmd_str = f"{json.dumps(command)}\n"
-                ser.write(cmd_str.encode('utf-8'))
-                print(f"   📝 Sent: {json.dumps(command)}")
+            # Send JSON command
+            cmd_str = f"{json.dumps(command)}\n"
+            ser.write(cmd_str.encode('utf-8'))
+            print(f"   📝 Sent: {json.dumps(command)}")
 
             # Monitor for 2 seconds to see command execution
             start_time = time.time()
@@ -87,7 +71,7 @@ def test_serial_control():
                 while ser.in_waiting > 0:
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line and not line.startswith('{"sensors"'):
-                        if 'NEW TANK/LEGACY CMD' in line or 'NEW SERIAL CMD' in line:
+                        if 'NEW TANK CMD' in line:
                             print(f"   ✅ Command received: {line}")
                             command_seen = True
                         elif 'MOTOR: Executing' in line:
@@ -103,11 +87,8 @@ def test_serial_control():
 
             # Send explicit STOP
             print(f"   🛑 Sending STOP command...")
-            if cmd_type == "LEGACY":
-                ser.write(b'STOP:0\n')
-            else:
-                stop_cmd = json.dumps({"type": "tank", "command": "STOP", "value": 0})
-                ser.write(f"{stop_cmd}\n".encode('utf-8'))
+            stop_cmd = json.dumps({"type": "tank", "command": "STOP", "value": 0})
+            ser.write(f"{stop_cmd}\n".encode('utf-8'))
             time.sleep(0.5)  # Brief pause after stop
 
             # Check results
@@ -139,7 +120,7 @@ def test_mecanum_control():
         print(f"✅ Connected to {port}")
 
         # Wait for Arduino to initialize
-        time.sleep(1)
+        time.sleep(2)
         print("🚀 Starting mecanum control tests\n")
 
         # Test mecanum movements based on the protocol proposal
@@ -213,7 +194,7 @@ if __name__ == "__main__":
     print("🤖 Arduino Robot Serial Control Test")
     print("=" * 50)
 
-    print("\n1️⃣  Testing legacy and tank JSON commands...")
+    print("\n1️⃣  Testing tank JSON commands...")
     test_serial_control()
 
     print("\n" + "=" * 50)

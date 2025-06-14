@@ -107,7 +107,7 @@ void RobotController::update() {
 
     if (cmd.valid) {
         // Handle different command types
-        if (cmd.type == TANK_COMMAND || cmd.type == LEGACY_COMMAND) {
+        if (cmd.type == TANK_COMMAND) {
             // Check if it's a reset command
             if (cmd.direction == ROBOT_RESET) {
                 resetAllStates();
@@ -120,10 +120,10 @@ void RobotController::update() {
                 return; // Don't process as motor command
             }
 
-            // Tank/Legacy command received
+            // Tank command received
             lastSerialCommand = cmd;
             lastSerialCommandTime = millis();
-            Serial.print("🤖 NEW TANK/LEGACY CMD: ");
+            Serial.print("🤖 NEW TANK CMD: ");
             Serial.print(cmd.direction);
             Serial.print(" at speed ");
             Serial.println(cmd.speed);

@@ -107,20 +107,8 @@ class RobotController:
                 break
 
     def send_command(self, direction, speed, silent=False):
-        """Send movement command to Arduino (legacy format)"""
-        if not self.connected or not self.serial:
-            return False
-
-        try:
-            command = f"{direction}:{speed}\n"
-            self.serial.write(command.encode())
-            if not silent:
-                print(f"📤 Sent: {direction}:{speed}")
-            return True
-        except Exception as e:
-            if not silent:
-                print(f"❌ Send failed: {e}")
-            return False
+        """Send tank command using JSON format"""
+        return self.send_tank_command(direction, speed, silent)
 
     def send_tank_command(self, direction, speed, silent=False):
         """Send tank command using JSON format"""

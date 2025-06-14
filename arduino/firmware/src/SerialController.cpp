@@ -28,22 +28,24 @@ bool SerialController::sendSensorData(DistanceSensors *sensors) {
     // Check distances and send data
     sensors->checkDistance();
 
-    // Send sensor data in JSON format for easy parsing
+    // Create JSON document for sensor data
+    JsonDocument doc;
+    JsonObject sensorObj = doc["sensors"].to<JsonObject>();
+
+    // Add sensor distance values
+    sensorObj["front_left"] = sensors->getFrontLeftDistance();
+    sensorObj["front_right"] = sensors->getFrontRightDistance();
+    sensorObj["rear_left"] = sensors->getRearLeftDistance();
+    sensorObj["rear_right"] = sensors->getRearRightDistance();
+
+    // Add collision detection flags
+    sensorObj["front_collision"] = sensors->frontCollison();
+    sensorObj["rear_collision"] = sensors->rearCollison();
+
+    // Serialize and send JSON
     // Always attempt to send - if connection is broken, watchdog will handle it
-    Serial.print("{\"sensors\":{");
-    Serial.print("\"front_left\":");
-    Serial.print(sensors->getFrontLeftDistance());
-    Serial.print(",\"front_right\":");
-    Serial.print(sensors->getFrontRightDistance());
-    Serial.print(",\"rear_left\":");
-    Serial.print(sensors->getRearLeftDistance());
-    Serial.print(",\"rear_right\":");
-    Serial.print(sensors->getRearRightDistance());
-    Serial.print(",\"front_collision\":");
-    Serial.print(sensors->frontCollison() ? "true" : "false");
-    Serial.print(",\"rear_collision\":");
-    Serial.print(sensors->rearCollison() ? "true" : "false");
-    Serial.println("}}");
+    serializeJson(doc, Serial);
+    Serial.println(); // Add newline
 
     // Always return true - let watchdog handle connection failures
     return true;
@@ -72,12 +74,26 @@ bool SerialController::hasCommand() {
 SerialCommand SerialController::parseCommand(String command) {
     command.trim();
 
-    // Check if it's a JSON command (starts with '{')
+    // Only support JSON commands now
     if (command.startsWith("{")) {
         return parseJsonCommand(command);
     } else {
-        // Legacy command format: "DIRECTION:SPEED"
-        return parseLegacyCommand(command);
+        // All commands must be JSON format
+        SerialCommand cmd;
+        cmd.valid = false;
+        cmd.type = INVALID_COMMAND;
+        cmd.direction = STOP;
+        cmd.speed = 0;
+        // Initialize motor speeds to 0
+        for (int i = 0; i < 4; i++) {
+            cmd.motor_speeds[i] = 0;
+        }
+
+        Serial.print("INVALID COMMAND FORMAT: Expected JSON, got: '");
+        Serial.print(command);
+        Serial.println("'");
+
+        return cmd;
     }
 }
 
@@ -178,48 +194,6 @@ SerialCommand SerialController::parseJsonCommand(String command) {
     } else {
         Serial.print("UNKNOWN JSON COMMAND TYPE: ");
         Serial.println(type);
-    }
-
-    return cmd;
-}
-
-SerialCommand SerialController::parseLegacyCommand(String command) {
-    SerialCommand cmd;
-    cmd.valid = false;
-    cmd.type = LEGACY_COMMAND;
-    cmd.direction = STOP;
-    cmd.speed = 0;
-    // Initialize motor speeds to 0
-    for (int i = 0; i < 4; i++) {
-        cmd.motor_speeds[i] = 0;
-    }
-
-    // Expected format: "DIRECTION:SPEED" (e.g., "FORWARD:60" or "STOP:0")
-    int colonIndex = command.indexOf(':');
-    if (colonIndex > 0) {
-        String dirStr = command.substring(0, colonIndex);
-        String speedStr = command.substring(colonIndex + 1);
-
-        cmd.direction = parseDirection(dirStr);
-        cmd.speed = speedStr.toInt();
-
-        // Validate speed range
-        if (cmd.speed >= 0 && cmd.speed <= 255) {
-            cmd.valid = true;
-            Serial.print("PARSED LEGACY: ");
-            Serial.print(dirStr);
-            Serial.print(":");
-            Serial.print(cmd.speed);
-            Serial.print(" -> ");
-            Serial.println(cmd.direction);
-        } else {
-            Serial.print("INVALID SPEED IN LEGACY: ");
-            Serial.println(cmd.speed);
-        }
-    } else {
-        Serial.print("NO COLON FOUND IN LEGACY: '");
-        Serial.print(command);
-        Serial.println("'");
     }
 
     return cmd;

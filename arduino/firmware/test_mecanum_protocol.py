@@ -234,21 +234,8 @@ def test_protocol_compatibility():
         print("🚀 Testing Protocol Compatibility")
         print("=" * 50)
 
-        # Test legacy command
-        print("   🎯 Testing Legacy Command")
-        ser.write(b"FORWARD:60\n")
-        time.sleep(1)
-
-        # Read response
-        while ser.in_waiting > 0:
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if line and not line.startswith('{"sensors"'):
-                if 'PARSED LEGACY' in line:
-                    print(f"   ✅ Legacy: {line}")
-                elif 'NEW TANK/LEGACY CMD' in line:
-                    print(f"   🤖 Legacy: {line}")
-
-        time.sleep(0.5)
+                # Skip legacy test - no longer supported
+        print("   ℹ️  Legacy commands no longer supported - testing JSON only")
 
         # Test tank JSON command
         print("\n   🎯 Testing Tank JSON Command")
@@ -262,7 +249,7 @@ def test_protocol_compatibility():
             if line and not line.startswith('{"sensors"'):
                 if 'PARSED TANK JSON' in line:
                     print(f"   ✅ Tank JSON: {line}")
-                elif 'NEW TANK/LEGACY CMD' in line:
+                elif 'NEW TANK CMD' in line:
                     print(f"   🤖 Tank JSON: {line}")
 
         time.sleep(0.5)
