@@ -106,46 +106,102 @@ void RobotController::update() {
     // No manual timeout logic needed - watchdog provides more robust protection
 
     if (cmd.valid) {
-        // Check if it's a reset command
-        if (cmd.direction == ROBOT_RESET) {
-            resetAllStates();
-            return;
-        }
+        // Handle different command types
+        if (cmd.type == TANK_COMMAND || cmd.type == LEGACY_COMMAND) {
+            // Check if it's a reset command
+            if (cmd.direction == ROBOT_RESET) {
+                resetAllStates();
+                return;
+            }
 
-        // Check if it's a keepalive command
-        if (cmd.direction == KEEPALIVE_CMD) {
-            Serial.println("💓 KEEPALIVE processed - no motor action");
-            return; // Don't process as motor command
-        }
+            // Check if it's a keepalive command
+            if (cmd.direction == KEEPALIVE_CMD) {
+                Serial.println("💓 KEEPALIVE processed - no motor action");
+                return; // Don't process as motor command
+            }
 
-        // New serial command received
-        lastSerialCommand = cmd;
-        lastSerialCommandTime = millis();
-        Serial.print("🤖 NEW SERIAL CMD: ");
-        Serial.print(cmd.direction);
-        Serial.print(" at speed ");
-        Serial.println(cmd.speed);
-        motorController->move(cmd.direction, cmd.speed);
+            // Tank/Legacy command received
+            lastSerialCommand = cmd;
+            lastSerialCommandTime = millis();
+            Serial.print("🤖 NEW TANK/LEGACY CMD: ");
+            Serial.print(cmd.direction);
+            Serial.print(" at speed ");
+            Serial.println(cmd.speed);
+            motorController->move(cmd.direction, cmd.speed);
 
-        // If it's a STOP command, execute it but don't persist it - let joystick take over immediately
-        if (cmd.direction == STOP) {
-            lastSerialCommand.valid = false;
-            Serial.println("🛑 STOP CMD - EXECUTED, NOT PERSISTING");
+            // If it's a STOP command, execute it but don't persist it - let joystick take over immediately
+            if (cmd.direction == STOP) {
+                lastSerialCommand.valid = false;
+                Serial.println("🛑 STOP CMD - EXECUTED, NOT PERSISTING");
+            }
+
+        } else if (cmd.type == MECANUM_COMMAND) {
+            // Mecanum direct motor control
+            lastSerialCommand = cmd;
+            lastSerialCommandTime = millis();
+            Serial.print("🤖 NEW MECANUM CMD: LF:");
+            Serial.print(cmd.motor_speeds[0]);
+            Serial.print(" LR:");
+            Serial.print(cmd.motor_speeds[1]);
+            Serial.print(" RF:");
+            Serial.print(cmd.motor_speeds[2]);
+            Serial.print(" RR:");
+            Serial.println(cmd.motor_speeds[3]);
+
+            motorController->moveWithDirectControl(
+                cmd.motor_speeds[0], // left_front
+                cmd.motor_speeds[2], // right_front
+                cmd.motor_speeds[1], // left_rear
+                cmd.motor_speeds[3]  // right_rear
+            );
+
+            // Check if it's a stop command (all motors at 0)
+            bool isStopCommand = (cmd.motor_speeds[0] == 0 && cmd.motor_speeds[1] == 0 &&
+                                cmd.motor_speeds[2] == 0 && cmd.motor_speeds[3] == 0);
+            if (isStopCommand) {
+                lastSerialCommand.valid = false;
+                Serial.println("🛑 MECANUM STOP CMD - EXECUTED, NOT PERSISTING");
+            }
         }
     } else if (hasActiveSerialCommand()) {
         // Continue executing the last serial command, but with throttled debug output
         static unsigned long lastContinuingDebug = 0;
         if (currentTime - lastContinuingDebug > 500) { // Debug every 500ms instead of every loop
-            Serial.print("🤖 CONTINUING: ");
-            Serial.print(lastSerialCommand.direction);
-            Serial.print(" at speed ");
-            Serial.print(lastSerialCommand.speed);
-            Serial.print(" (");
-            Serial.print(currentTime - lastSerialCommandTime);
-            Serial.println("ms elapsed)");
+            if (lastSerialCommand.type == MECANUM_COMMAND) {
+                Serial.print("🤖 CONTINUING MECANUM: LF:");
+                Serial.print(lastSerialCommand.motor_speeds[0]);
+                Serial.print(" LR:");
+                Serial.print(lastSerialCommand.motor_speeds[1]);
+                Serial.print(" RF:");
+                Serial.print(lastSerialCommand.motor_speeds[2]);
+                Serial.print(" RR:");
+                Serial.print(lastSerialCommand.motor_speeds[3]);
+                Serial.print(" (");
+                Serial.print(currentTime - lastSerialCommandTime);
+                Serial.println("ms elapsed)");
+            } else {
+                Serial.print("🤖 CONTINUING: ");
+                Serial.print(lastSerialCommand.direction);
+                Serial.print(" at speed ");
+                Serial.print(lastSerialCommand.speed);
+                Serial.print(" (");
+                Serial.print(currentTime - lastSerialCommandTime);
+                Serial.println("ms elapsed)");
+            }
             lastContinuingDebug = currentTime;
         }
-        motorController->move(lastSerialCommand.direction, lastSerialCommand.speed);
+
+        // Execute appropriate command type
+        if (lastSerialCommand.type == MECANUM_COMMAND) {
+            motorController->moveWithDirectControl(
+                lastSerialCommand.motor_speeds[0], // left_front
+                lastSerialCommand.motor_speeds[2], // right_front
+                lastSerialCommand.motor_speeds[1], // left_rear
+                lastSerialCommand.motor_speeds[3]  // right_rear
+            );
+        } else {
+            motorController->move(lastSerialCommand.direction, lastSerialCommand.speed);
+        }
     } else {
         // No active serial command, use joystick control
         static unsigned long lastJoystickDebugTime = 0;

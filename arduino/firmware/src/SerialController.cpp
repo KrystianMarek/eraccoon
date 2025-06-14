@@ -13,6 +13,7 @@ SerialController::SerialController() {
 SerialCommand SerialController::getCommand() {
     SerialCommand cmd;
     cmd.valid = false;
+    cmd.type = INVALID_COMMAND;
 
     if (hasCommand()) {
         cmd = parseCommand(inputString);
@@ -69,12 +70,129 @@ bool SerialController::hasCommand() {
 }
 
 SerialCommand SerialController::parseCommand(String command) {
+    command.trim();
+
+    // Check if it's a JSON command (starts with '{')
+    if (command.startsWith("{")) {
+        return parseJsonCommand(command);
+    } else {
+        // Legacy command format: "DIRECTION:SPEED"
+        return parseLegacyCommand(command);
+    }
+}
+
+SerialCommand SerialController::parseJsonCommand(String command) {
     SerialCommand cmd;
     cmd.valid = false;
+    cmd.type = INVALID_COMMAND;
     cmd.direction = STOP;
     cmd.speed = 0;
+    // Initialize motor speeds to 0
+    for (int i = 0; i < 4; i++) {
+        cmd.motor_speeds[i] = 0;
+    }
 
-    command.trim();
+    // Parse JSON
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, command);
+
+    if (error) {
+        Serial.print("JSON PARSE ERROR: ");
+        Serial.println(error.c_str());
+        return cmd;
+    }
+
+    // Check command type
+    const char* type = doc["type"];
+    if (!type) {
+        Serial.println("MISSING TYPE FIELD IN JSON");
+        return cmd;
+    }
+
+    if (strcmp(type, "tank") == 0) {
+        // Tank command format: {"type": "tank", "command": "FORWARD", "value": 60}
+        const char* commandStr = doc["command"];
+        int value = doc["value"];
+
+        if (!commandStr) {
+            Serial.println("MISSING COMMAND FIELD IN TANK JSON");
+            return cmd;
+        }
+
+        cmd.type = TANK_COMMAND;
+        cmd.direction = parseDirection(String(commandStr));
+        cmd.speed = value;
+
+        // Validate speed range
+        if (cmd.speed >= 0 && cmd.speed <= 255) {
+            cmd.valid = true;
+            Serial.print("PARSED TANK JSON: ");
+            Serial.print(commandStr);
+            Serial.print(":");
+            Serial.print(cmd.speed);
+            Serial.print(" -> ");
+            Serial.println(cmd.direction);
+        } else {
+            Serial.print("INVALID SPEED IN TANK JSON: ");
+            Serial.println(cmd.speed);
+        }
+
+    } else if (strcmp(type, "mecanum") == 0) {
+        // Mecanum command format: {"type": "mecanum", "motors": {"left_front": -127, "left_rear": 127, "right_front": 127, "right_rear": -127}}
+        JsonObject motors = doc["motors"];
+        if (!motors) {
+            Serial.println("MISSING MOTORS FIELD IN MECANUM JSON");
+            return cmd;
+        }
+
+        // Extract motor speeds
+        cmd.motor_speeds[0] = motors["left_front"] | 0;   // left_front
+        cmd.motor_speeds[1] = motors["left_rear"] | 0;    // left_rear
+        cmd.motor_speeds[2] = motors["right_front"] | 0;  // right_front
+        cmd.motor_speeds[3] = motors["right_rear"] | 0;   // right_rear
+
+        // Validate motor speed ranges (-255 to 255)
+        bool valid_speeds = true;
+        for (int i = 0; i < 4; i++) {
+            if (cmd.motor_speeds[i] < -255 || cmd.motor_speeds[i] > 255) {
+                valid_speeds = false;
+                break;
+            }
+        }
+
+        if (valid_speeds) {
+            cmd.type = MECANUM_COMMAND;
+            cmd.valid = true;
+            Serial.print("PARSED MECANUM JSON: LF:");
+            Serial.print(cmd.motor_speeds[0]);
+            Serial.print(" LR:");
+            Serial.print(cmd.motor_speeds[1]);
+            Serial.print(" RF:");
+            Serial.print(cmd.motor_speeds[2]);
+            Serial.print(" RR:");
+            Serial.println(cmd.motor_speeds[3]);
+        } else {
+            Serial.println("INVALID MOTOR SPEEDS IN MECANUM JSON (must be -255 to 255)");
+        }
+
+    } else {
+        Serial.print("UNKNOWN JSON COMMAND TYPE: ");
+        Serial.println(type);
+    }
+
+    return cmd;
+}
+
+SerialCommand SerialController::parseLegacyCommand(String command) {
+    SerialCommand cmd;
+    cmd.valid = false;
+    cmd.type = LEGACY_COMMAND;
+    cmd.direction = STOP;
+    cmd.speed = 0;
+    // Initialize motor speeds to 0
+    for (int i = 0; i < 4; i++) {
+        cmd.motor_speeds[i] = 0;
+    }
 
     // Expected format: "DIRECTION:SPEED" (e.g., "FORWARD:60" or "STOP:0")
     int colonIndex = command.indexOf(':');
@@ -88,18 +206,18 @@ SerialCommand SerialController::parseCommand(String command) {
         // Validate speed range
         if (cmd.speed >= 0 && cmd.speed <= 255) {
             cmd.valid = true;
-            Serial.print("PARSED: ");
+            Serial.print("PARSED LEGACY: ");
             Serial.print(dirStr);
             Serial.print(":");
             Serial.print(cmd.speed);
             Serial.print(" -> ");
             Serial.println(cmd.direction);
         } else {
-            Serial.print("INVALID SPEED: ");
+            Serial.print("INVALID SPEED IN LEGACY: ");
             Serial.println(cmd.speed);
         }
     } else {
-        Serial.print("NO COLON FOUND IN: '");
+        Serial.print("NO COLON FOUND IN LEGACY: '");
         Serial.print(command);
         Serial.println("'");
     }

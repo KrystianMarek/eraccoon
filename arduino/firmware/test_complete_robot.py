@@ -107,7 +107,7 @@ class RobotController:
                 break
 
     def send_command(self, direction, speed, silent=False):
-        """Send movement command to Arduino"""
+        """Send movement command to Arduino (legacy format)"""
         if not self.connected or not self.serial:
             return False
 
@@ -120,6 +120,48 @@ class RobotController:
         except Exception as e:
             if not silent:
                 print(f"❌ Send failed: {e}")
+            return False
+
+    def send_tank_command(self, direction, speed, silent=False):
+        """Send tank command using JSON format"""
+        if not self.connected or not self.serial:
+            return False
+
+        try:
+            import json
+            command = json.dumps({"type": "tank", "command": direction, "value": speed})
+            self.serial.write(f"{command}\n".encode())
+            if not silent:
+                print(f"📤 Sent Tank JSON: {command}")
+            return True
+        except Exception as e:
+            if not silent:
+                print(f"❌ Tank command failed: {e}")
+            return False
+
+    def send_mecanum_command(self, left_front, left_rear, right_front, right_rear, silent=False):
+        """Send mecanum command using JSON format"""
+        if not self.connected or not self.serial:
+            return False
+
+        try:
+            import json
+            command = json.dumps({
+                "type": "mecanum",
+                "motors": {
+                    "left_front": left_front,
+                    "left_rear": left_rear,
+                    "right_front": right_front,
+                    "right_rear": right_rear
+                }
+            })
+            self.serial.write(f"{command}\n".encode())
+            if not silent:
+                print(f"📤 Sent Mecanum: LF:{left_front} LR:{left_rear} RF:{right_front} RR:{right_rear}")
+            return True
+        except Exception as e:
+            if not silent:
+                print(f"❌ Mecanum command failed: {e}")
             return False
 
     def read_responses(self, duration=2.0):
@@ -219,6 +261,49 @@ class RobotController:
             front_collision = sensors.get('front_collision', False)
             rear_collision = sensors.get('rear_collision', False)
             print(f"   Collisions: Front={front_collision}, Rear={rear_collision}")
+
+    def test_json_command_formats(self):
+        """Test new JSON command formats"""
+        print("\n🚀 TESTING JSON COMMAND FORMATS")
+        print("=" * 50)
+
+        # Test tank JSON commands
+        print("🔹 Testing Tank JSON Commands")
+        tank_movements = [
+            ("FORWARD", 60),
+            ("BACKWARD", 50),
+            ("LEFT", 45),
+            ("RIGHT", 45),
+            ("STOP", 0)
+        ]
+
+        for direction, speed in tank_movements:
+            print(f"\n🚗 Testing Tank JSON {direction} at speed {speed}")
+            self.send_tank_command(direction, speed)
+            self.read_responses(1.0)
+
+        time.sleep(1)
+
+        # Test mecanum commands
+        print("\n🔹 Testing Mecanum Commands")
+        mecanum_movements = [
+            (100, 100, 100, 100, "Forward"),
+            (-100, -100, -100, -100, "Backward"),
+            (-100, 100, 100, -100, "Strafe Right"),
+            (100, -100, -100, 100, "Strafe Left"),
+            (-100, -100, 100, 100, "Rotate Clockwise"),
+            (100, 100, -100, -100, "Rotate Counter-Clockwise"),
+            (50, 150, 150, 50, "Forward + Strafe Right"),
+            (0, 0, 0, 0, "Stop")
+        ]
+
+        for lf, lr, rf, rr, description in mecanum_movements:
+            print(f"\n🚗 Testing Mecanum {description}")
+            self.send_mecanum_command(lf, lr, rf, rr)
+            self.read_responses(1.5)
+            time.sleep(0.5)
+
+        print(f"\n📊 JSON command formats testing completed")
 
     def test_watchdog_reboot(self):
         """Test watchdog-triggered reboot functionality"""
@@ -400,6 +485,10 @@ def main():
 
         # Test sensor monitoring
         robot.test_sensor_monitoring()
+
+        # Test JSON command formats
+        print("\n" + "=" * 60)
+        robot.test_json_command_formats()
 
         # Test watchdog reboot functionality
         robot.test_watchdog_reboot()

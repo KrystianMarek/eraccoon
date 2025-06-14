@@ -34,6 +34,7 @@ public:
     void move(MotionDirection direction, int speed);
     void stop();
     void setMotorSpeeds(int fl_speed, int fr_speed, int rl_speed, int rr_speed);
+    void moveWithDirectControl(int fl_speed, int fr_speed, int rl_speed, int rr_speed);
 
 private:
     CytronMD *motor_fl;

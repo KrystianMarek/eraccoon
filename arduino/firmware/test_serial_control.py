@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
+"""
+Arduino Robot Serial Control Test
+
+Tests both legacy and new JSON-based motor commands:
+- Legacy format: "FORWARD:60"
+- Tank JSON format: {"type": "tank", "command": "FORWARD", "value": 60}
+- Mecanum JSON format: {"type": "mecanum", "motors": {"left_front": 100, ...}}
+"""
+
 import serial
 import time
 import glob
-
-BAUD_RATE = 115200
+import json
 
 def find_arduino_port():
     """Find available Arduino port"""
     ports = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*') + glob.glob('COM*')
     for port in sorted(ports):
         try:
-            test_ser = serial.Serial(port, BAUD_RATE, timeout=1)
+            test_ser = serial.Serial(port, 115200, timeout=1)
             test_ser.close()
             return port
         except:
@@ -18,58 +26,57 @@ def find_arduino_port():
     return None
 
 def test_serial_control():
-    """Test serial control with proper timing to avoid command conflicts"""
-    try:
-        # Find Arduino port
-        port = find_arduino_port()
-        if not port:
-            print("❌ No Arduino found")
-            return
+    """Test serial control with both legacy and JSON formats"""
+    port = find_arduino_port()
+    if not port:
+        print("❌ No Arduino found")
+        return
 
-        # Open serial connection
-        ser = serial.Serial(port, BAUD_RATE, timeout=1)
-        print(f"Connected to {port} at {BAUD_RATE} baud")
+    try:
+        # Connect to Arduino
+        ser = serial.Serial(port, 115200, timeout=1)
+        print(f"✅ Connected to {port}")
 
         # Wait for Arduino to initialize
-        time.sleep(3)
-
-        print("\n=== SERIAL CONTROL TEST ===")
-        print("🎯 Testing individual movement commands with proper timing")
-        print("📝 Each command will run for 2 seconds with 1 second pause between")
-        print()
-
-        # Clear any initial state
-        print("1. 🔄 Initial RESET...")
-        ser.write(b'RESET:0\n')
         time.sleep(2)
+        print("🚀 Starting motor control tests\n")
 
-        # Monitor for 3 seconds to see initial state
-        print("2. 📊 Checking initial state...")
-        start_time = time.time()
-        while time.time() - start_time < 3:
-            while ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if line and not line.startswith('{"sensors"'):
-                    print(f"   {line}")
-            time.sleep(0.1)
-
-        print("\n3. 🚗 Testing individual movements...")
-
-        # Test each direction individually with longer duration
+        # Test movements with different formats
         movements = [
-            ("FORWARD", 40, "Should move forward"),
-            ("BACKWARD", 40, "Should move backward"),
-            ("LEFT", 35, "Should turn left"),
-            ("RIGHT", 35, "Should turn right")
+            # Legacy format tests
+            ("LEGACY", "FORWARD:60", "Forward movement (legacy)"),
+            ("LEGACY", "BACKWARD:50", "Backward movement (legacy)"),
+            ("LEGACY", "LEFT:45", "Left turn (legacy)"),
+            ("LEGACY", "RIGHT:45", "Right turn (legacy)"),
+            ("LEGACY", "FORWARD_LEFT:40", "Forward-left diagonal (legacy)"),
+            ("LEGACY", "FORWARD_RIGHT:40", "Forward-right diagonal (legacy)"),
+            ("LEGACY", "BACKWARD_LEFT:35", "Backward-left diagonal (legacy)"),
+            ("LEGACY", "BACKWARD_RIGHT:35", "Backward-right diagonal (legacy)"),
+
+            # Tank JSON format tests
+            ("TANK_JSON", {"type": "tank", "command": "FORWARD", "value": 60}, "Forward movement (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "BACKWARD", "value": 50}, "Backward movement (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "LEFT", "value": 45}, "Left turn (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "RIGHT", "value": 45}, "Right turn (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "FORWARD_LEFT", "value": 40}, "Forward-left diagonal (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "FORWARD_RIGHT", "value": 40}, "Forward-right diagonal (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "BACKWARD_LEFT", "value": 35}, "Backward-left diagonal (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "BACKWARD_RIGHT", "value": 35}, "Backward-right diagonal (tank JSON)"),
         ]
 
-        for direction, speed, description in movements:
-            print(f"\n   🎯 Testing {direction}:{speed} - {description}")
+        for cmd_type, command, description in movements:
+            print(f"\n   🎯 Testing {description}")
             print(f"   📤 Sending command...")
 
-            # Send command
-            cmd = f"{direction}:{speed}\n"
-            ser.write(cmd.encode('utf-8'))
+            # Send command based on type
+            if cmd_type == "LEGACY":
+                cmd_str = f"{command}\n"
+                ser.write(cmd_str.encode('utf-8'))
+                print(f"   📝 Sent: {command}")
+            elif cmd_type == "TANK_JSON":
+                cmd_str = f"{json.dumps(command)}\n"
+                ser.write(cmd_str.encode('utf-8'))
+                print(f"   📝 Sent: {json.dumps(command)}")
 
             # Monitor for 2 seconds to see command execution
             start_time = time.time()
@@ -80,7 +87,7 @@ def test_serial_control():
                 while ser.in_waiting > 0:
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line and not line.startswith('{"sensors"'):
-                        if 'NEW SERIAL CMD' in line:
+                        if 'NEW TANK/LEGACY CMD' in line or 'NEW SERIAL CMD' in line:
                             print(f"   ✅ Command received: {line}")
                             command_seen = True
                         elif 'MOTOR: Executing' in line:
@@ -96,59 +103,122 @@ def test_serial_control():
 
             # Send explicit STOP
             print(f"   🛑 Sending STOP command...")
-            ser.write(b'STOP:0\n')
+            if cmd_type == "LEGACY":
+                ser.write(b'STOP:0\n')
+            else:
+                stop_cmd = json.dumps({"type": "tank", "command": "STOP", "value": 0})
+                ser.write(f"{stop_cmd}\n".encode('utf-8'))
             time.sleep(0.5)  # Brief pause after stop
 
             # Check results
             if command_seen and motor_action_seen:
-                print(f"   ✅ {direction} command: SUCCESS")
+                print(f"   ✅ {description}: SUCCESS")
             elif command_seen:
-                print(f"   ⚠️  {direction} command: RECEIVED but no motor action seen")
+                print(f"   ⚠️  {description}: RECEIVED but no motor action seen")
             else:
-                print(f"   ❌ {direction} command: FAILED - not received")
+                print(f"   ❌ {description}: FAILED - not received")
 
-            print(f"   ⏸️  Pausing 1 second before next command...")
-            time.sleep(1)
-
-        print(f"\n4. 🔄 Final RESET and joystick test...")
-        ser.write(b'RESET:0\n')
-        time.sleep(2)
-
-        print(f"5. 🕹️  Testing joystick recovery (try joystick now)...")
-        start_time = time.time()
-        joystick_working = False
-
-        while time.time() - start_time < 5:  # 5 seconds to test joystick
-            while ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if line and not line.startswith('{"sensors"'):
-                    if 'JOYSTICK ACTIVE' in line or 'Active:YES' in line:
-                        print(f"   🎮 {line}")
-                        joystick_working = True
-                    elif 'JOYSTICK DEBUG' in line:
-                        print(f"   🔍 {line}")
-                    else:
-                        print(f"   📝 {line}")
-            time.sleep(0.1)
-
-        print(f"\n=== TEST RESULTS ===")
-        print(f"📊 Movement Commands:")
-        for direction, _, _ in movements:
-            print(f"   {direction}: Check console output above")
-
-        print(f"\n🕹️  Joystick Recovery: {'✅ WORKING' if joystick_working else '❌ NOT WORKING'}")
-
-        if not joystick_working:
-            print(f"\n🔧 TROUBLESHOOTING NEXT STEPS:")
-            print(f"   1. Check if motor debug output shows different directions")
-            print(f"   2. Verify that RESET clears all serial state")
-            print(f"   3. Test joystick independently (disconnect serial)")
-            print(f"   4. Check for hardware conflicts between serial and joystick pins")
-
+        print(f"\n🎉 All movement tests completed!")
         ser.close()
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Test failed: {e}")
+        if 'ser' in locals() and ser.is_open:
+            ser.close()
+
+def test_mecanum_control():
+    """Test mecanum wheel direct motor control"""
+    port = find_arduino_port()
+    if not port:
+        print("❌ No Arduino found")
+        return
+
+    try:
+        # Connect to Arduino
+        ser = serial.Serial(port, 115200, timeout=1)
+        print(f"✅ Connected to {port}")
+
+        # Wait for Arduino to initialize
+        time.sleep(1)
+        print("🚀 Starting mecanum control tests\n")
+
+        # Test mecanum movements based on the protocol proposal
+        mecanum_movements = [
+            # Pure movements
+            ({"type": "mecanum", "motors": {"left_front": 100, "left_rear": 100, "right_front": 100, "right_rear": 100}}, "Forward movement"),
+            ({"type": "mecanum", "motors": {"left_front": -100, "left_rear": -100, "right_front": -100, "right_rear": -100}}, "Backward movement"),
+            ({"type": "mecanum", "motors": {"left_front": -100, "left_rear": 100, "right_front": 100, "right_rear": -100}}, "Strafe right"),
+            ({"type": "mecanum", "motors": {"left_front": 100, "left_rear": -100, "right_front": -100, "right_rear": 100}}, "Strafe left"),
+            ({"type": "mecanum", "motors": {"left_front": -100, "left_rear": -100, "right_front": 100, "right_rear": 100}}, "Rotate clockwise"),
+            ({"type": "mecanum", "motors": {"left_front": 100, "left_rear": 100, "right_front": -100, "right_rear": -100}}, "Rotate counter-clockwise"),
+
+            # Complex movements
+            ({"type": "mecanum", "motors": {"left_front": 50, "left_rear": 150, "right_front": 150, "right_rear": 50}}, "Forward + strafe right"),
+            ({"type": "mecanum", "motors": {"left_front": 150, "left_rear": 50, "right_front": 50, "right_rear": 150}}, "Forward + strafe left"),
+            ({"type": "mecanum", "motors": {"left_front": 80, "left_rear": 80, "right_front": -40, "right_rear": -40}}, "Forward + rotate"),
+
+            # Stop command
+            ({"type": "mecanum", "motors": {"left_front": 0, "left_rear": 0, "right_front": 0, "right_rear": 0}}, "Stop all motors"),
+        ]
+
+        for command, description in mecanum_movements:
+            print(f"\n   🎯 Testing {description}")
+            cmd_str = f"{json.dumps(command)}\n"
+            ser.write(cmd_str.encode('utf-8'))
+            print(f"   📝 Sent: {json.dumps(command)}")
+
+            # Monitor for 2 seconds to see command execution
+            start_time = time.time()
+            command_seen = False
+            motor_action_seen = False
+
+            while time.time() - start_time < 2.0:  # Watch for 2 seconds
+                while ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line and not line.startswith('{"sensors"'):
+                        if 'NEW MECANUM CMD' in line:
+                            print(f"   ✅ Command received: {line}")
+                            command_seen = True
+                        elif 'MECANUM MOTORS' in line:
+                            print(f"   🚗 Motor action: {line}")
+                            motor_action_seen = True
+                        elif 'CONTINUING MECANUM' in line:
+                            print(f"   ⏳ Continuing: {line}")
+                        elif 'EXPIRED' in line:
+                            print(f"   ⏰ Expired: {line}")
+                        else:
+                            print(f"   📝 {line}")
+                time.sleep(0.1)
+
+            # Brief pause between movements
+            time.sleep(0.5)
+
+            # Check results
+            if command_seen and motor_action_seen:
+                print(f"   ✅ {description}: SUCCESS")
+            elif command_seen:
+                print(f"   ⚠️  {description}: RECEIVED but no motor action seen")
+            else:
+                print(f"   ❌ {description}: FAILED - not received")
+
+        print(f"\n🎉 All mecanum tests completed!")
+        ser.close()
+
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+        if 'ser' in locals() and ser.is_open:
+            ser.close()
 
 if __name__ == "__main__":
+    print("🤖 Arduino Robot Serial Control Test")
+    print("=" * 50)
+
+    print("\n1️⃣  Testing legacy and tank JSON commands...")
     test_serial_control()
+
+    print("\n" + "=" * 50)
+    print("\n2️⃣  Testing mecanum wheel control...")
+    test_mecanum_control()
+
+    print("\n" + "=" * 50)
+    print("✅ All tests completed!")

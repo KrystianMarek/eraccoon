@@ -112,3 +112,30 @@ void MotorController::setMotorSpeeds(int fl_speed, int fr_speed, int rl_speed, i
     motor_rl->setSpeed(rl_speed);
     motor_rr->setSpeed(rr_speed);
 }
+
+void MotorController::moveWithDirectControl(int fl_speed, int fr_speed, int rl_speed, int rr_speed) {
+    // Add debug output for direct motor control
+    static int last_fl = 0, last_fr = 0, last_rl = 0, last_rr = 0;
+
+    if (fl_speed != last_fl || fr_speed != last_fr || rl_speed != last_rl || rr_speed != last_rr) {
+        Serial.print("🚗 MECANUM MOTORS: LF:");
+        Serial.print(fl_speed);
+        Serial.print(" LR:");
+        Serial.print(rl_speed);
+        Serial.print(" RF:");
+        Serial.print(fr_speed);
+        Serial.print(" RR:");
+        Serial.println(rr_speed);
+
+        last_fl = fl_speed;
+        last_fr = fr_speed;
+        last_rl = rl_speed;
+        last_rr = rr_speed;
+    }
+
+    // Set motor speeds directly
+    motor_fl->setSpeed(fl_speed);
+    motor_fr->setSpeed(fr_speed);
+    motor_rl->setSpeed(rl_speed);
+    motor_rr->setSpeed(rr_speed);
+}
