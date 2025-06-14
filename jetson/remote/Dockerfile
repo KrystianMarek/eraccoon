@@ -1,24 +1,64 @@
-ARG PYTHON_VERSION="python:3.10"
+# Remote Control Service for Mecanum Wheel Robot
+# Production Docker Image
 
-FROM $PYTHON_VERSION AS compiler
+FROM python:3.11-slim
+
+# Set metadata
+LABEL maintainer="Remote Control Team"
+LABEL description="Remote Control Service for Mecanum Wheel Robot"
+LABEL version="1.0.0"
+
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV MODE=production
 
-WORKDIR /app/
+# Create app user (security best practice)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-RUN python -m venv /opt/venv
-# Enable venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    --no-install-recommends \
+    # Required for controller access
+    udev \
+    # Required for pygame (even in headless mode)
+    libasound2-dev \
+    libpulse-dev \
+    libaudio-dev \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    # Required for input device access
+    libevdev2 \
+    libudev1 \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install -r requirements.txt
+# Create application directory
+WORKDIR /app
 
-FROM $PYTHON_VERSION AS runner
-WORKDIR /app/
-COPY --from=compiler /opt/venv /opt/venv
+# Copy requirements first (for better Docker layer caching)
+COPY requirements.txt .
 
-# Enable venv
-ENV PATH="/opt/venv/bin:$PATH"
-COPY src /app/src
-COPY main.py /app/main.py
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "/app/main.py"]
+# Copy application code
+COPY main.py .
+COPY src/ ./src/
+
+# Create directories for runtime
+RUN mkdir -p /tmp/remote-control \
+    && chown -R appuser:appuser /app /tmp/remote-control
+
+# Switch to app user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
+
+# Default command
+CMD ["python", "main.py", "--mode", "production"]
