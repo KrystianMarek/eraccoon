@@ -271,6 +271,12 @@ class MotorProxyServer:
             elif msg_type == 'motor_command':
                 self._handle_motor_command(client_id, data)
 
+            elif msg_type == 'tank_command':
+                self._handle_tank_command(client_id, data)
+
+            elif msg_type == 'mecanum_command':
+                self._handle_mecanum_command(client_id, data)
+
             elif msg_type == 'set_priority':
                 self._handle_set_priority(client_id, data.get('priority', 10))
 
@@ -296,7 +302,12 @@ class MotorProxyServer:
             })
 
     def _handle_motor_command(self, client_id: str, data: Dict[str, Any]):
-        """Handle motor command from client"""
+        """Handle motor command from client (legacy format - redirects to tank command)"""
+        # For backward compatibility, treat motor_command as tank_command
+        self._handle_tank_command(client_id, data)
+
+    def _handle_tank_command(self, client_id: str, data: Dict[str, Any]):
+        """Handle tank-style motor command from client"""
         command = data.get('command', '').upper()
         value = data.get('value', 0)
 
@@ -309,13 +320,13 @@ class MotorProxyServer:
             return
 
         # Validate command
-        valid_commands = {'FORWARD', 'BACKWARD', 'LEFT', 'RIGHT', 'STOP', 'RESET',
+        valid_commands = {'FORWARD', 'BACKWARD', 'LEFT', 'RIGHT', 'STOP', 'RESET', 'KEEPALIVE',
                          'FORWARD_LEFT', 'FORWARD_RIGHT', 'BACKWARD_LEFT', 'BACKWARD_RIGHT'}
 
         if command not in valid_commands:
             self._send_to_client(client_id, {
                 'type': 'error',
-                'message': f'Invalid command: {command}'
+                'message': f'Invalid tank command: {command}'
             })
             return
 
@@ -328,7 +339,7 @@ class MotorProxyServer:
             return
 
         # Send command to Arduino
-        success = self.serial_controller.send_command(command, value)
+        success = self.serial_controller.send_tank_command(command, value)
 
         # Update stats
         self.stats['commands_processed'] += 1
@@ -337,9 +348,72 @@ class MotorProxyServer:
 
         # Send response to client
         response = {
-            'type': 'command_response',
+            'type': 'tank_command_response',
             'command': command,
             'value': value,
+            'success': success,
+            'timestamp': time.time()
+        }
+        self._send_to_client(client_id, response)
+
+        # Set active client
+        if success:
+            self.active_client_id = client_id
+
+    def _handle_mecanum_command(self, client_id: str, data: Dict[str, Any]):
+        """Handle mecanum-style motor command from client"""
+        # Check if client has control priority
+        if not self._can_client_control(client_id):
+            self._send_to_client(client_id, {
+                'type': 'error',
+                'message': 'Access denied - another client has higher priority'
+            })
+            return
+
+        # Extract motor speeds
+        motors = data.get('motors', {})
+        left_front = motors.get('left_front', 0)
+        left_rear = motors.get('left_rear', 0)
+        right_front = motors.get('right_front', 0)
+        right_rear = motors.get('right_rear', 0)
+
+        # Validate motor speed ranges
+        def validate_speed(speed, motor_name):
+            if not isinstance(speed, (int, float)):
+                return False, f'{motor_name} speed must be a number'
+            if not (-255 <= speed <= 255):
+                return False, f'{motor_name} speed must be between -255 and 255'
+            return True, None
+
+        for speed, name in [(left_front, 'left_front'), (left_rear, 'left_rear'),
+                           (right_front, 'right_front'), (right_rear, 'right_rear')]:
+            valid, error_msg = validate_speed(speed, name)
+            if not valid:
+                self._send_to_client(client_id, {
+                    'type': 'error',
+                    'message': error_msg
+                })
+                return
+
+        # Send command to Arduino
+        success = self.serial_controller.send_mecanum_command(
+            int(left_front), int(left_rear), int(right_front), int(right_rear)
+        )
+
+        # Update stats
+        self.stats['commands_processed'] += 1
+        if not success:
+            self.stats['errors'] += 1
+
+        # Send response to client
+        response = {
+            'type': 'mecanum_command_response',
+            'motors': {
+                'left_front': int(left_front),
+                'left_rear': int(left_rear),
+                'right_front': int(right_front),
+                'right_rear': int(right_rear)
+            },
             'success': success,
             'timestamp': time.time()
         }

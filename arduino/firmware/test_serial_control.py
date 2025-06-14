@@ -51,6 +51,8 @@ def test_serial_control():
             ("TANK_JSON", {"type": "tank", "command": "FORWARD_RIGHT", "value": 40}, "Forward-right diagonal (tank JSON)"),
             ("TANK_JSON", {"type": "tank", "command": "BACKWARD_LEFT", "value": 35}, "Backward-left diagonal (tank JSON)"),
             ("TANK_JSON", {"type": "tank", "command": "BACKWARD_RIGHT", "value": 35}, "Backward-right diagonal (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "KEEPALIVE", "value": 0}, "Keep-alive command (tank JSON)"),
+            ("TANK_JSON", {"type": "tank", "command": "STOP", "value": 0}, "Stop command (tank JSON)"),
         ]
 
         for cmd_type, command, description in movements:
@@ -77,6 +79,9 @@ def test_serial_control():
                         elif 'MOTOR: Executing' in line:
                             print(f"   🚗 Motor action: {line}")
                             motor_action_seen = True
+                        elif 'KEEPALIVE processed' in line:
+                            print(f"   💓 Keep-alive processed: {line}")
+                            motor_action_seen = True  # Count keepalive as successful action
                         elif 'CONTINUING' in line:
                             print(f"   ⏳ Continuing: {line}")
                         elif 'EXPIRED' in line:
@@ -85,11 +90,12 @@ def test_serial_control():
                             print(f"   📝 {line}")
                 time.sleep(0.1)
 
-            # Send explicit STOP
-            print(f"   🛑 Sending STOP command...")
-            stop_cmd = json.dumps({"type": "tank", "command": "STOP", "value": 0})
-            ser.write(f"{stop_cmd}\n".encode('utf-8'))
-            time.sleep(0.5)  # Brief pause after stop
+            # Send explicit STOP (unless this is already a STOP or KEEPALIVE command)
+            if command.get("command") not in ["STOP", "KEEPALIVE"]:
+                print(f"   🛑 Sending STOP command...")
+                stop_cmd = json.dumps({"type": "tank", "command": "STOP", "value": 0})
+                ser.write(f"{stop_cmd}\n".encode('utf-8'))
+                time.sleep(0.5)  # Brief pause after stop
 
             # Check results
             if command_seen and motor_action_seen:

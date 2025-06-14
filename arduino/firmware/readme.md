@@ -47,19 +47,19 @@ All commands use structured JSON format:
 {"type": "tank", "command": "FORWARD", "value": 60}
 ```
 
-| Command | Range | Description |
-|---------|-------|-------------|
-| `FORWARD` | 0-255 | Move forward |
-| `BACKWARD` | 0-255 | Move backward |
-| `LEFT` | 0-255 | Turn left |
-| `RIGHT` | 0-255 | Turn right |
-| `FORWARD_LEFT` | 0-255 | Diagonal movement |
-| `FORWARD_RIGHT` | 0-255 | Diagonal movement |
-| `BACKWARD_LEFT` | 0-255 | Diagonal movement |
-| `BACKWARD_RIGHT` | 0-255 | Diagonal movement |
-| `STOP` | 0 | Stop immediately |
-| `RESET` | 0 | Reset to joystick mode |
-| `KEEPALIVE` | 0 | Maintain connection |
+| Command | Range | Description | Example JSON |
+|---------|-------|-------------|--------------|
+| `FORWARD` | 0-255 | Move forward | `{"type": "tank", "command": "FORWARD", "value": 60}` |
+| `BACKWARD` | 0-255 | Move backward | `{"type": "tank", "command": "BACKWARD", "value": 50}` |
+| `LEFT` | 0-255 | Turn left | `{"type": "tank", "command": "LEFT", "value": 45}` |
+| `RIGHT` | 0-255 | Turn right | `{"type": "tank", "command": "RIGHT", "value": 45}` |
+| `FORWARD_LEFT` | 0-255 | Diagonal movement | `{"type": "tank", "command": "FORWARD_LEFT", "value": 40}` |
+| `FORWARD_RIGHT` | 0-255 | Diagonal movement | `{"type": "tank", "command": "FORWARD_RIGHT", "value": 40}` |
+| `BACKWARD_LEFT` | 0-255 | Diagonal movement | `{"type": "tank", "command": "BACKWARD_LEFT", "value": 35}` |
+| `BACKWARD_RIGHT` | 0-255 | Diagonal movement | `{"type": "tank", "command": "BACKWARD_RIGHT", "value": 35}` |
+| `STOP` | 0 | Stop immediately | `{"type": "tank", "command": "STOP", "value": 0}` |
+| `RESET` | 0 | Reset to joystick mode | `{"type": "tank", "command": "RESET", "value": 0}` |
+| `KEEPALIVE` | 0 | Maintain connection (prevents auto-reboot) | `{"type": "tank", "command": "KEEPALIVE", "value": 0}` |
 
 ### Mecanum Movement Commands (NEW)
 Direct motor control for advanced movements:

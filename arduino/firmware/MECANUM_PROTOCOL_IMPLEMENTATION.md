@@ -17,6 +17,8 @@ This document describes the implementation of the JSON-based mecanum wheel contr
 
 Supported commands: `FORWARD`, `BACKWARD`, `LEFT`, `RIGHT`, `FORWARD_LEFT`, `FORWARD_RIGHT`, `BACKWARD_LEFT`, `BACKWARD_RIGHT`, `STOP`, `RESET`, `KEEPALIVE`
 
+**KEEPALIVE Special Behavior**: Processed as tank command but produces no motor action - only kicks watchdog timer
+
 ### 2. Mecanum JSON Commands
 ```json
 {

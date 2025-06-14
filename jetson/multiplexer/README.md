@@ -143,6 +143,23 @@ python examples/client_example.py auto
 ```
 **Output**: Only command responses and important status messages (no sensor spam)
 
+#### 3. Mecanum Client Example (`examples/mecanum_client_example.py`)
+**Purpose**: Demonstrates advanced mecanum wheel control capabilities
+```bash
+# Run both tank and mecanum demos, then interactive mode
+python examples/mecanum_client_example.py
+
+# Run specific demo mode
+python examples/mecanum_client_example.py tank      # Tank commands only
+python examples/mecanum_client_example.py mecanum   # Mecanum commands only
+python examples/mecanum_client_example.py interactive  # Interactive control
+```
+**Features**:
+- Tank-style movement commands (traditional)
+- Mecanum-specific movements (strafing, rotation, diagonal)
+- Interactive control with keyboard commands
+- Demonstrates all movement patterns possible with mecanum wheels
+
 ### Basic Control
 
 ```python
@@ -164,6 +181,21 @@ client.get_sensor_data()   # Current sensor readings
 
 client.disconnect()
 ```
+
+### Testing New Command Format
+
+A test script is provided to verify the new JSON command format:
+
+```bash
+# Test both tank and mecanum commands
+python test_new_commands.py
+```
+
+This script tests:
+- Tank command format and responses
+- Mecanum command format and responses
+- Legacy command backward compatibility
+- Error handling and validation
 
 ### Command Line Options
 
@@ -210,6 +242,10 @@ All messages are JSON objects terminated with `\n`:
 ### Client → Server Messages
 
 #### Motor Commands
+
+The service supports three types of motor commands:
+
+##### 1. Legacy Motor Commands (Backward Compatible)
 ```json
 {
   "type": "motor_command",
@@ -218,15 +254,48 @@ All messages are JSON objects terminated with `\n`:
 }
 ```
 
-**Command Types:**
+##### 2. Tank Commands (Recommended)
+```json
+{
+  "type": "tank_command",
+  "command": "FORWARD|BACKWARD|LEFT|RIGHT|STOP|RESET|KEEPALIVE|FORWARD_LEFT|FORWARD_RIGHT|BACKWARD_LEFT|BACKWARD_RIGHT",
+  "value": 0-255
+}
+```
+
+##### 3. Mecanum Commands (Advanced)
+```json
+{
+  "type": "mecanum_command",
+  "motors": {
+    "left_front": -255 to 255,
+    "left_rear": -255 to 255,
+    "right_front": -255 to 255,
+    "right_rear": -255 to 255
+  }
+}
+```
+
+**Tank Command Types:**
 - `FORWARD` / `BACKWARD`: Linear movement
 - `LEFT` / `RIGHT`: Turning movement
 - `FORWARD_LEFT` / `FORWARD_RIGHT`: Diagonal movement
 - `BACKWARD_LEFT` / `BACKWARD_RIGHT`: Reverse diagonal movement
 - `STOP`: Stop all motors
 - `RESET`: Return control to Arduino joystick
+- `KEEPALIVE`: Maintain connection (system use)
 
-**Value Range**: 0-255 (motor speed/power)
+**Tank Value Range**: 0-255 (motor speed/power)
+
+**Mecanum Motor Control:**
+- **Individual Motor Control**: Direct control of each wheel motor
+- **Speed Range**: -255 to 255 (negative = reverse direction)
+- **Advanced Movements**: Enables strafing, diagonal movement, rotation in place
+- **Movement Patterns**:
+  - Forward: `LF:100, LR:100, RF:100, RR:100`
+  - Strafe Right: `LF:-100, LR:100, RF:100, RR:-100`
+  - Strafe Left: `LF:100, LR:-100, RF:-100, RR:100`
+  - Rotate Clockwise: `LF:-100, LR:-100, RF:100, RR:100`
 
 #### System Commands
 ```json
@@ -316,6 +385,34 @@ All messages are JSON objects terminated with `\n`:
 - Collision flags indicate immediate obstacle detection
 
 #### Command Responses
+
+##### Tank Command Response
+```json
+{
+  "type": "tank_command_response",
+  "command": "FORWARD",
+  "value": 60,
+  "success": true,
+  "timestamp": 1640995200.0
+}
+```
+
+##### Mecanum Command Response
+```json
+{
+  "type": "mecanum_command_response",
+  "motors": {
+    "left_front": 100,
+    "left_rear": -100,
+    "right_front": -100,
+    "right_rear": 100
+  },
+  "success": true,
+  "timestamp": 1640995200.0
+}
+```
+
+##### Legacy Command Response (Backward Compatible)
 ```json
 {
   "type": "command_response",

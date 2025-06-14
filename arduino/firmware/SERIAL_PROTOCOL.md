@@ -65,10 +65,12 @@ Direct motor control for advanced movements:
 - **Rotate Counter-Clockwise**: `LF:100, LR:100, RF:-100, RR:-100`
 
 ### System Commands
-| Command | Description | Example |
-|---------|-------------|---------|
-| `RESET` | Reset robot state and return to joystick control | `{"type": "tank", "command": "RESET", "value": 0}` |
-| `KEEPALIVE` | Prevent auto-reboot (for connection maintenance) | `{"type": "tank", "command": "KEEPALIVE", "value": 0}` |
+| Command | Description | Example | Behavior |
+|---------|-------------|---------|----------|
+| `RESET` | Reset robot state and return to joystick control | `{"type": "tank", "command": "RESET", "value": 0}` | Resets all states, activates joystick control |
+| `KEEPALIVE` | Prevent auto-reboot (for connection maintenance) | `{"type": "tank", "command": "KEEPALIVE", "value": 0}` | **No motor action** - only kicks watchdog timer |
+
+**Note**: KEEPALIVE commands are processed as tank commands but do not trigger any motor movement. They serve solely to maintain the connection and prevent the auto-reboot system from activating during idle periods.
 
 ### Speed Values
 - **Tank Commands**: 0-255 (8-bit PWM values)
@@ -144,9 +146,11 @@ Ensures clean state between different control sessions by automatically rebootin
 5. **Device Re-enumeration**: USB device changes (e.g., `/dev/ttyACM0` → `/dev/ttyACM1`)
 
 ### Keep-Alive Support
-- Send `{"type": "tank", "command": "KEEPALIVE", "value": 0}` periodically to prevent timeout
-- Keep-alive commands don't reset activity timer (by design)
-- Useful for maintaining connection during idle periods
+- **Format**: `{"type": "tank", "command": "KEEPALIVE", "value": 0}` (JSON tank command)
+- **Behavior**: No motor action - only kicks watchdog timer to prevent auto-reboot
+- **Parsing**: Processed as tank command, converted to `KEEPALIVE_CMD` enum internally
+- **Usage**: Send periodically (every 3-5 seconds) to maintain connection during idle periods
+- **Important**: KEEPALIVE commands do NOT reset the activity timer for command persistence
 
 ## Safety System
 

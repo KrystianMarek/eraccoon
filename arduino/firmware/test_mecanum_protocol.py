@@ -252,6 +252,21 @@ def test_protocol_compatibility():
                 elif 'NEW TANK CMD' in line:
                     print(f"   🤖 Tank JSON: {line}")
 
+        # Test KEEPALIVE command
+        print("\n   🎯 Testing KEEPALIVE Command")
+        keepalive_cmd = json.dumps({"type": "tank", "command": "KEEPALIVE", "value": 0})
+        ser.write(f"{keepalive_cmd}\n".encode('utf-8'))
+        time.sleep(1)
+
+        # Read response
+        while ser.in_waiting > 0:
+            line = ser.readline().decode('utf-8', errors='ignore').strip()
+            if line and not line.startswith('{"sensors"'):
+                if 'PARSED TANK JSON' in line:
+                    print(f"   ✅ KEEPALIVE JSON: {line}")
+                elif 'KEEPALIVE processed' in line:
+                    print(f"   💓 KEEPALIVE: {line}")
+
         time.sleep(0.5)
 
         # Test mecanum command

@@ -335,20 +335,80 @@ class SerialController:
             return False
 
     def send_command(self, command: str, value: int) -> bool:
-        """Send a command to Arduino"""
+        """Send a tank command to Arduino (legacy format, converted to JSON)"""
+        return self.send_tank_command(command, value)
+
+    def send_tank_command(self, command: str, value: int) -> bool:
+        """Send a tank-style JSON command to Arduino"""
         if not self._is_connected():
-            logger.warning(f"Cannot send command {command}:{value} - not connected")
+            logger.warning(f"Cannot send tank command {command}:{value} - not connected")
             return False
 
         try:
             with self._write_lock:
-                cmd_str = f"{command.upper()}:{value}\n"
+                # Create JSON command for tank movement
+                json_cmd = {
+                    "type": "tank",
+                    "command": command.upper(),
+                    "value": max(0, min(255, value))
+                }
+                cmd_str = f"{json.dumps(json_cmd)}\n"
                 self.serial_conn.write(cmd_str.encode('utf-8'))
                 self.last_activity = time.time()
-                logger.debug(f"Sent command: {cmd_str.strip()}")
+                logger.debug(f"Sent tank command: {cmd_str.strip()}")
                 return True
         except Exception as e:
-            logger.error(f"Failed to send command {command}:{value} - {e}")
+            logger.error(f"Failed to send tank command {command}:{value} - {e}")
+            self._handle_connection_error()
+            return False
+
+    def send_mecanum_command(self, left_front: int, left_rear: int, right_front: int, right_rear: int) -> bool:
+        """Send a mecanum-style JSON command to Arduino"""
+        if not self._is_connected():
+            logger.warning(f"Cannot send mecanum command - not connected")
+            return False
+
+        # Validate motor speeds
+        def clamp_speed(speed):
+            return max(-255, min(255, speed))
+
+        try:
+            with self._write_lock:
+                # Create JSON command for mecanum movement
+                json_cmd = {
+                    "type": "mecanum",
+                    "motors": {
+                        "left_front": clamp_speed(left_front),
+                        "left_rear": clamp_speed(left_rear),
+                        "right_front": clamp_speed(right_front),
+                        "right_rear": clamp_speed(right_rear)
+                    }
+                }
+                cmd_str = f"{json.dumps(json_cmd)}\n"
+                self.serial_conn.write(cmd_str.encode('utf-8'))
+                self.last_activity = time.time()
+                logger.debug(f"Sent mecanum command: LF:{left_front} LR:{left_rear} RF:{right_front} RR:{right_rear}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to send mecanum command - {e}")
+            self._handle_connection_error()
+            return False
+
+    def send_raw_json_command(self, json_command: Dict[str, Any]) -> bool:
+        """Send a raw JSON command to Arduino"""
+        if not self._is_connected():
+            logger.warning(f"Cannot send raw JSON command - not connected")
+            return False
+
+        try:
+            with self._write_lock:
+                cmd_str = f"{json.dumps(json_command)}\n"
+                self.serial_conn.write(cmd_str.encode('utf-8'))
+                self.last_activity = time.time()
+                logger.debug(f"Sent raw JSON command: {cmd_str.strip()}")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to send raw JSON command - {e}")
             self._handle_connection_error()
             return False
 
@@ -521,6 +581,41 @@ class SerialController:
         """Reset robot to joystick control"""
         return self.send_command("RESET", 0)
 
+    # Mecanum movement helpers
+    def mecanum_forward(self, speed: int) -> bool:
+        """Move robot forward using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(speed, speed, speed, speed)
+
+    def mecanum_backward(self, speed: int) -> bool:
+        """Move robot backward using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(-speed, -speed, -speed, -speed)
+
+    def mecanum_strafe_left(self, speed: int) -> bool:
+        """Strafe left using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(speed, -speed, -speed, speed)
+
+    def mecanum_strafe_right(self, speed: int) -> bool:
+        """Strafe right using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(-speed, speed, speed, -speed)
+
+    def mecanum_rotate_clockwise(self, speed: int) -> bool:
+        """Rotate clockwise using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(-speed, -speed, speed, speed)
+
+    def mecanum_rotate_counterclockwise(self, speed: int) -> bool:
+        """Rotate counter-clockwise using mecanum wheels"""
+        speed = max(-255, min(255, speed))
+        return self.send_mecanum_command(speed, speed, -speed, -speed)
+
+    def mecanum_stop(self) -> bool:
+        """Stop all mecanum motors"""
+        return self.send_mecanum_command(0, 0, 0, 0)
+
     def _simple_keepalive_loop(self):
         """Simple keepalive to prevent Arduino 5-second auto-reboot timeout"""
         logger.info("Starting simple keepalive thread")
@@ -535,7 +630,13 @@ class SerialController:
                 if self._running and self.serial_conn and self.serial_conn.is_open:
                     try:
                         with self._write_lock:
-                            cmd_str = "KEEPALIVE:0\n"
+                            # Send keepalive as JSON command
+                            keepalive_cmd = {
+                                "type": "tank",
+                                "command": "KEEPALIVE",
+                                "value": 0
+                            }
+                            cmd_str = f"{json.dumps(keepalive_cmd)}\n"
                             self.serial_conn.write(cmd_str.encode('utf-8'))
                             logger.debug("Sent keepalive command")
                     except Exception as e:
