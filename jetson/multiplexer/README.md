@@ -194,7 +194,6 @@ python test_new_commands.py
 This script tests:
 - Tank command format and responses
 - Mecanum command format and responses
-- Legacy command backward compatibility
 - Error handling and validation
 
 ### Command Line Options
@@ -243,18 +242,9 @@ All messages are JSON objects terminated with `\n`:
 
 #### Motor Commands
 
-The service supports three types of motor commands:
+The service supports two types of motor commands:
 
-##### 1. Legacy Motor Commands (Backward Compatible)
-```json
-{
-  "type": "motor_command",
-  "command": "FORWARD|BACKWARD|LEFT|RIGHT|STOP|RESET|FORWARD_LEFT|FORWARD_RIGHT|BACKWARD_LEFT|BACKWARD_RIGHT",
-  "value": 0-255
-}
-```
-
-##### 2. Tank Commands (Recommended)
+##### 1. Tank Commands
 ```json
 {
   "type": "tank_command",
@@ -263,7 +253,7 @@ The service supports three types of motor commands:
 }
 ```
 
-##### 3. Mecanum Commands (Advanced)
+##### 2. Mecanum Commands (Advanced)
 ```json
 {
   "type": "mecanum_command",
@@ -412,16 +402,7 @@ The service supports three types of motor commands:
 }
 ```
 
-##### Legacy Command Response (Backward Compatible)
-```json
-{
-  "type": "command_response",
-  "command": "FORWARD",
-  "value": 60,
-  "success": true,
-  "timestamp": 1640995200.0
-}
-```
+
 
 #### Arduino Messages
 ```json

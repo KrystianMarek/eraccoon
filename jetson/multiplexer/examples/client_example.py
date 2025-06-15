@@ -108,7 +108,7 @@ class MotorProxyClient:
                 else:
                     print(f"⚠️  Arduino: {arduino_state} (disconnected)")
 
-            elif msg_type == 'command_response':
+            elif msg_type == 'tank_command_response':
                 command = data.get('command', '')
                 value = data.get('value', 0)
                 success = data.get('success', False)
@@ -145,27 +145,27 @@ class MotorProxyClient:
     # Convenience methods for robot control
     def move_forward(self, speed: int = 60):
         """Move robot forward"""
-        return self.send_message({'type': 'motor_command', 'command': 'FORWARD', 'value': speed})
+        return self.send_message({'type': 'tank_command', 'command': 'FORWARD', 'value': speed})
 
     def move_backward(self, speed: int = 60):
         """Move robot backward"""
-        return self.send_message({'type': 'motor_command', 'command': 'BACKWARD', 'value': speed})
+        return self.send_message({'type': 'tank_command', 'command': 'BACKWARD', 'value': speed})
 
     def turn_left(self, speed: int = 40):
         """Turn robot left"""
-        return self.send_message({'type': 'motor_command', 'command': 'LEFT', 'value': speed})
+        return self.send_message({'type': 'tank_command', 'command': 'LEFT', 'value': speed})
 
     def turn_right(self, speed: int = 40):
         """Turn robot right"""
-        return self.send_message({'type': 'motor_command', 'command': 'RIGHT', 'value': speed})
+        return self.send_message({'type': 'tank_command', 'command': 'RIGHT', 'value': speed})
 
     def stop(self):
         """Stop robot movement"""
-        return self.send_message({'type': 'motor_command', 'command': 'STOP', 'value': 0})
+        return self.send_message({'type': 'tank_command', 'command': 'STOP', 'value': 0})
 
     def reset(self):
         """Reset robot to joystick control"""
-        return self.send_message({'type': 'motor_command', 'command': 'RESET', 'value': 0})
+        return self.send_message({'type': 'tank_command', 'command': 'RESET', 'value': 0})
 
     def ping(self):
         """Send ping to server"""

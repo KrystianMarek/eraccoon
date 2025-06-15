@@ -109,30 +109,7 @@ def test_commands():
 
             time.sleep(1.5)
 
-        # Test legacy motor_command (should still work)
-        print("\n🔄 Testing Legacy Compatibility")
-        print("-" * 30)
 
-        legacy_cmd = {"type": "motor_command", "command": "FORWARD", "value": 50}
-        print(f"📤 Sending legacy command: {legacy_cmd}")
-        message = json.dumps(legacy_cmd) + '\n'
-        sock.send(message.encode('utf-8'))
-
-        try:
-            sock.settimeout(2.0)
-            response = sock.recv(1024).decode('utf-8').strip()
-            if response:
-                for line in response.split('\n'):
-                    if line:
-                        try:
-                            resp_data = json.loads(line)
-                            if 'command_response' in resp_data.get('type', ''):
-                                success = resp_data.get('success', False)
-                                print(f"📥 Legacy response: {'✅' if success else '❌'} {resp_data.get('command')}:{resp_data.get('value')}")
-                        except json.JSONDecodeError:
-                            print(f"📥 Raw response: {line}")
-        except socket.timeout:
-            print("⏰ No response received")
 
         # Final stop
         stop_cmd = {"type": "tank_command", "command": "STOP", "value": 0}

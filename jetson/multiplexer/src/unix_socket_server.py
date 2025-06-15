@@ -268,9 +268,6 @@ class MotorProxyServer:
             elif msg_type == 'get_status':
                 self._send_status_to_client(client_id)
 
-            elif msg_type == 'motor_command':
-                self._handle_motor_command(client_id, data)
-
             elif msg_type == 'tank_command':
                 self._handle_tank_command(client_id, data)
 
@@ -300,11 +297,6 @@ class MotorProxyServer:
                 'type': 'error',
                 'message': str(e)
             })
-
-    def _handle_motor_command(self, client_id: str, data: Dict[str, Any]):
-        """Handle motor command from client (legacy format - redirects to tank command)"""
-        # For backward compatibility, treat motor_command as tank_command
-        self._handle_tank_command(client_id, data)
 
     def _handle_tank_command(self, client_id: str, data: Dict[str, Any]):
         """Handle tank-style motor command from client"""
