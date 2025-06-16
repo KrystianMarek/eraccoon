@@ -1,41 +1,68 @@
 #!/usr/bin/env python3
 """
-Example client for Motor Controller Proxy/Multiplexer
+Example client for the Motor Controller Proxy Service
 
-This script demonstrates how to connect to the Unix socket server
-and control the Arduino robot via the proxy service.
+This example demonstrates:
+- Connecting to the multiplexer service
+- Client identification and keepalive management
+- Sending tank and mecanum commands
+- Receiving sensor data
+- Proper cleanup and error handling
 """
 
-import socket
 import json
-import time
+import socket
 import threading
+import time
 import sys
-from typing import Dict, Any, Optional
+from typing import Optional
 
 
-class MotorProxyClient:
-    """Client for connecting to the Motor Controller Proxy via Unix socket"""
+class MotorControllerClient:
+    """Client for communicating with the Motor Controller Proxy Service"""
 
-    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock'):
+    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock',
+                 client_name: str = 'ExampleClient'):
         self.socket_path = socket_path
-        self.sock: Optional[socket.socket] = None
-        self.connected = False
-        self.client_id: Optional[str] = None
-        self._stop_event = threading.Event()
+        self.client_name = client_name
+        self.socket: Optional[socket.socket] = None
+        self.running = False
+        self.receive_thread: Optional[threading.Thread] = None
+        self.keepalive_thread: Optional[threading.Thread] = None
+
+        # Client info received from server
+        self.unique_name = None
+        self.client_id = None
+
+        # Keepalive management
+        self.keepalive_interval = 2.5  # Send keepalive every 2.5 seconds (server expects every 3s)
+        self.last_keepalive_response = time.time()
 
     def connect(self) -> bool:
-        """Connect to the proxy server"""
+        """Connect to the motor controller service"""
         try:
-            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.sock.connect(self.socket_path)
-            self.connected = True
+            self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.socket.connect(self.socket_path)
+            self.running = True
 
-            # Start message receiving thread
-            self._receiver_thread = threading.Thread(target=self._receive_messages, daemon=True)
-            self._receiver_thread.start()
+            # Start receive thread
+            self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
+            self.receive_thread.start()
 
-            print(f"✅ Connected to motor proxy at {self.socket_path}")
+            # Send identification
+            self.send_message({
+                'type': 'identify',
+                'name': self.client_name
+            })
+
+            # Wait a moment for welcome and identification response
+            time.sleep(0.5)
+
+            # Start keepalive thread
+            self.keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+            self.keepalive_thread.start()
+
+            print(f"✅ Connected to motor controller service as {self.unique_name or 'Unknown'}")
             return True
 
         except Exception as e:
@@ -43,263 +70,276 @@ class MotorProxyClient:
             return False
 
     def disconnect(self):
-        """Disconnect from the proxy server"""
-        self.connected = False
-        self._stop_event.set()
-
-        if self.sock:
+        """Disconnect from the service"""
+        self.running = False
+        if self.socket:
             try:
-                self.sock.close()
+                self.socket.close()
             except:
                 pass
+        print("👋 Disconnected from motor controller service")
 
-        print("👋 Disconnected from motor proxy")
-
-    def send_message(self, message: Dict[str, Any]) -> bool:
-        """Send a message to the proxy server"""
-        if not self.connected or not self.sock:
-            print("❌ Not connected to proxy server")
-            return False
-
+    def send_message(self, message: dict) -> bool:
+        """Send a message to the service"""
         try:
-            msg_str = json.dumps(message) + '\n'
-            self.sock.send(msg_str.encode('utf-8'))
-            return True
+            if self.socket:
+                json_msg = json.dumps(message) + '\n'
+                self.socket.send(json_msg.encode('utf-8'))
+                return True
         except Exception as e:
             print(f"❌ Failed to send message: {e}")
             return False
+        return False
 
-    def _receive_messages(self):
-        """Background thread to receive messages from server"""
+    def send_tank_command(self, command: str, value: int = 0) -> bool:
+        """Send a tank-style motor command"""
+        return self.send_message({
+            'type': 'tank_command',
+            'command': command.upper(),
+            'value': value
+        })
+
+    def send_mecanum_command(self, left_front: int, left_rear: int,
+                           right_front: int, right_rear: int) -> bool:
+        """Send a mecanum-style motor command"""
+        return self.send_message({
+            'type': 'mecanum_command',
+            'motors': {
+                'left_front': left_front,
+                'left_rear': left_rear,
+                'right_front': right_front,
+                'right_rear': right_rear
+            }
+        })
+
+    def send_keepalive(self) -> bool:
+        """Send a keepalive message"""
+        return self.send_message({
+            'type': 'keepalive'
+        })
+
+    def get_status(self) -> bool:
+        """Request server status"""
+        return self.send_message({
+            'type': 'get_status'
+        })
+
+    def _receive_loop(self):
+        """Receive messages from the service"""
         buffer = ""
 
-        while self.connected and not self._stop_event.is_set():
+        while self.running:
             try:
-                data = self.sock.recv(4096).decode('utf-8')
-                if not data:
-                    break
+                if self.socket:
+                    data = self.socket.recv(1024).decode('utf-8')
+                    if not data:
+                        break
 
-                buffer += data
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    if line:
-                        self._process_message(line)
+                    buffer += data
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            self._handle_message(line.strip())
 
             except Exception as e:
-                if self.connected:
-                    print(f"❌ Error receiving message: {e}")
+                if self.running:
+                    print(f"❌ Receive error: {e}")
                 break
 
-    def _process_message(self, message: str):
-        """Process a received message"""
+    def _handle_message(self, message: str):
+        """Handle a message from the service"""
         try:
             data = json.loads(message)
             msg_type = data.get('type', '')
 
             if msg_type == 'welcome':
                 self.client_id = data.get('client_id')
-                print(f"✅ Connected as {self.client_id}")
+                print(f"🎉 Welcome! Client ID: {self.client_id}")
 
-            elif msg_type == 'status':
-                arduino_state = data.get('arduino_state', 'unknown')
-                arduino_connected = data.get('arduino_connected', False)
-                if arduino_connected:
-                    print(f"📊 Arduino: {arduino_state}")
-                else:
-                    print(f"⚠️  Arduino: {arduino_state} (disconnected)")
+            elif msg_type == 'identify_response':
+                self.unique_name = data.get('unique_name')
+                claimed_name = data.get('claimed_name')
+                print(f"🏷️  Identified as {self.unique_name} (claimed: {claimed_name})")
 
-            elif msg_type == 'tank_command_response':
-                command = data.get('command', '')
-                value = data.get('value', 0)
-                success = data.get('success', False)
-                status = "✅" if success else "❌"
-                print(f"🎮 {status} {command}:{value}")
+            elif msg_type == 'keepalive_response':
+                self.last_keepalive_response = time.time()
+                print("💓 Keepalive acknowledged")
 
             elif msg_type == 'sensor_data':
-                # Don't print sensor data - too noisy for command interface
-                pass
+                # Print sensor data (abbreviated for readability)
+                sensors = data.get('sensors', {})
+                print(f"📊 Sensors: Temp={sensors.get('temperature', 'N/A')}°C, "
+                      f"Humidity={sensors.get('humidity', 'N/A')}%, "
+                      f"Distance={sensors.get('distance', 'N/A')}cm")
 
-            elif msg_type == 'arduino_message':
-                message_text = data.get('message', '')
-                # Only show important Arduino messages, skip routine ones
-                if any(keyword in message_text.upper() for keyword in ['ERROR', 'WARNING', 'TIMEOUT', 'DISCONNECTED', 'CONNECTED', 'READY']):
-                    print(f"🤖 Arduino: {message_text}")
+            elif msg_type == 'tank_command_response':
+                success = "✅" if data.get('success') else "❌"
+                print(f"{success} Tank command: {data.get('command')} = {data.get('value')}")
+
+            elif msg_type == 'mecanum_command_response':
+                success = "✅" if data.get('success') else "❌"
+                motors = data.get('motors', {})
+                print(f"{success} Mecanum: LF={motors.get('left_front')}, "
+                      f"LR={motors.get('left_rear')}, RF={motors.get('right_front')}, "
+                      f"RR={motors.get('right_rear')}")
 
             elif msg_type == 'error':
-                error_msg = data.get('message', 'Unknown error')
-                print(f"❌ Error: {error_msg}")
+                print(f"❌ Error: {data.get('message')}")
 
-            elif msg_type == 'arduino_connection':
-                state = data.get('state', 'unknown')
-                if state in ['connected', 'disconnected']:
-                    print(f"🔄 Arduino: {state}")
+            elif msg_type == 'status':
+                print(f"📊 Status: Arduino={data.get('arduino_state')}, "
+                      f"Clients={len(data.get('clients', []))}")
 
-            elif msg_type == 'pong':
-                print("🏓 Pong")
+            else:
+                print(f"📨 Received: {msg_type}")
 
         except json.JSONDecodeError:
             print(f"❌ Invalid JSON received: {message}")
         except Exception as e:
-            print(f"❌ Error processing message: {e}")
+            print(f"❌ Error handling message: {e}")
 
-    # Convenience methods for robot control
-    def move_forward(self, speed: int = 60):
-        """Move robot forward"""
-        return self.send_message({'type': 'tank_command', 'command': 'FORWARD', 'value': speed})
+    def _keepalive_loop(self):
+        """Send periodic keepalive messages"""
+        while self.running:
+            try:
+                self.send_keepalive()
+                time.sleep(self.keepalive_interval)
 
-    def move_backward(self, speed: int = 60):
-        """Move robot backward"""
-        return self.send_message({'type': 'tank_command', 'command': 'BACKWARD', 'value': speed})
+                # Check if we're getting keepalive responses
+                if time.time() - self.last_keepalive_response > 10:
+                    print("⚠️  Warning: No keepalive response for 10 seconds")
 
-    def turn_left(self, speed: int = 40):
-        """Turn robot left"""
-        return self.send_message({'type': 'tank_command', 'command': 'LEFT', 'value': speed})
-
-    def turn_right(self, speed: int = 40):
-        """Turn robot right"""
-        return self.send_message({'type': 'tank_command', 'command': 'RIGHT', 'value': speed})
-
-    def stop(self):
-        """Stop robot movement"""
-        return self.send_message({'type': 'tank_command', 'command': 'STOP', 'value': 0})
-
-    def reset(self):
-        """Reset robot to joystick control"""
-        return self.send_message({'type': 'tank_command', 'command': 'RESET', 'value': 0})
-
-    def ping(self):
-        """Send ping to server"""
-        return self.send_message({'type': 'ping'})
-
-    def get_status(self):
-        """Get server status"""
-        return self.send_message({'type': 'get_status'})
-
-    def get_sensor_data(self):
-        """Get current sensor data"""
-        return self.send_message({'type': 'get_sensor_data'})
-
-    def set_priority(self, priority: int):
-        """Set client priority (lower number = higher priority)"""
-        return self.send_message({'type': 'set_priority', 'priority': priority})
-
-
-def interactive_demo():
-    """Interactive demo of robot control"""
-    print("🤖 Motor Controller Proxy - Interactive Demo")
-    print("=" * 50)
-
-    # Create client and connect
-    client = MotorProxyClient()
-    if not client.connect():
-        return
-
-    # Wait for welcome message
-    time.sleep(1)
-
-    try:
-        print("\n🎮 Commands: w/s=forward/back, a/d=left/right, x=stop, r=reset, i=status, q=quit")
-
-        while True:
-            choice = input("\n> ").lower().strip()
-
-            if choice == 'w':
-                client.move_forward(60)
-            elif choice == 's':
-                client.move_backward(60)
-            elif choice == 'a':
-                client.turn_left(40)
-            elif choice == 'd':
-                client.turn_right(40)
-            elif choice == 'x':
-                client.stop()
-            elif choice == 'r':
-                client.reset()
-            elif choice == 'i':
-                client.get_status()
-            elif choice == 'p':
-                client.ping()
-            elif choice == 't':
-                client.get_sensor_data()
-            elif choice == 'q':
+            except Exception as e:
+                if self.running:
+                    print(f"❌ Keepalive error: {e}")
                 break
-            elif choice == '':
+
+
+def demo_tank_commands(client: MotorControllerClient):
+    """Demonstrate tank-style commands"""
+    print("\n🚗 Tank Command Demo")
+    print("=" * 40)
+
+    commands = [
+        ('FORWARD', 100),
+        ('BACKWARD', 80),
+        ('LEFT', 60),
+        ('RIGHT', 60),
+        ('STOP', 0)
+    ]
+
+    for command, value in commands:
+        print(f"Sending: {command} {value}")
+        client.send_tank_command(command, value)
+        time.sleep(1)
+
+
+def demo_mecanum_commands(client: MotorControllerClient):
+    """Demonstrate mecanum-style commands"""
+    print("\n🕹️  Mecanum Command Demo")
+    print("=" * 40)
+
+    movements = [
+        ("Forward", 100, 100, 100, 100),
+        ("Backward", -100, -100, -100, -100),
+        ("Strafe Left", -100, 100, 100, -100),
+        ("Strafe Right", 100, -100, -100, 100),
+        ("Rotate Left", -100, -100, 100, 100),
+        ("Rotate Right", 100, 100, -100, -100),
+        ("Stop", 0, 0, 0, 0)
+    ]
+
+    for name, lf, lr, rf, rr in movements:
+        print(f"Sending: {name} (LF={lf}, LR={lr}, RF={rf}, RR={rr})")
+        client.send_mecanum_command(lf, lr, rf, rr)
+        time.sleep(1.5)
+
+
+def interactive_mode(client: MotorControllerClient):
+    """Interactive command mode"""
+    print("\n🎮 Interactive Mode")
+    print("=" * 40)
+    print("Commands:")
+    print("  tank <command> <value>  - Send tank command")
+    print("  mecanum <lf> <lr> <rf> <rr> - Send mecanum command")
+    print("  status                  - Get server status")
+    print("  keepalive              - Send keepalive")
+    print("  quit                   - Exit")
+    print()
+
+    while client.running:
+        try:
+            cmd = input("🎮 > ").strip().split()
+            if not cmd:
                 continue
+
+            if cmd[0] == 'quit':
+                break
+            elif cmd[0] == 'tank' and len(cmd) >= 3:
+                client.send_tank_command(cmd[1], int(cmd[2]))
+            elif cmd[0] == 'mecanum' and len(cmd) >= 5:
+                client.send_mecanum_command(int(cmd[1]), int(cmd[2]), int(cmd[3]), int(cmd[4]))
+            elif cmd[0] == 'status':
+                client.get_status()
+            elif cmd[0] == 'keepalive':
+                client.send_keepalive()
             else:
                 print("❌ Invalid command")
 
-            # Small delay to see responses
-            time.sleep(0.3)
-
-    except KeyboardInterrupt:
-        print("\n🛑 Interrupted by user")
-    finally:
-        client.disconnect()
-
-
-def automated_demo():
-    """Automated demo showing basic robot movements"""
-    print("🤖 Motor Controller Proxy - Automated Demo")
-    print("=" * 50)
-
-    # Create client and connect
-    client = MotorProxyClient()
-    if not client.connect():
-        return
-
-    # Wait for welcome message
-    time.sleep(2)
-
-    try:
-        # Get initial status
-        print("📊 Getting initial status...")
-        client.get_status()
-        time.sleep(1)
-
-        # Perform sequence of movements
-        movements = [
-            ("Moving forward", lambda: client.move_forward(50)),
-            ("Stopping", lambda: client.stop()),
-            ("Moving backward", lambda: client.move_backward(50)),
-            ("Stopping", lambda: client.stop()),
-            ("Turning left", lambda: client.turn_left(40)),
-            ("Stopping", lambda: client.stop()),
-            ("Turning right", lambda: client.turn_right(40)),
-            ("Stopping", lambda: client.stop()),
-        ]
-
-        for description, action in movements:
-            print(f"🎮 {description}...")
-            action()
-            time.sleep(2)  # Wait between movements
-
-        # Reset to joystick control
-        print("🔄 Resetting to joystick control...")
-        client.reset()
-        time.sleep(1)
-
-        print("✅ Automated demo completed!")
-
-    except KeyboardInterrupt:
-        print("\n🛑 Demo interrupted by user")
-    finally:
-        client.disconnect()
+        except KeyboardInterrupt:
+            break
+        except ValueError:
+            print("❌ Invalid number format")
+        except Exception as e:
+            print(f"❌ Error: {e}")
 
 
 def main():
-    """Main entry point"""
-    if len(sys.argv) > 1:
-        if sys.argv[1] == 'auto':
-            automated_demo()
-        elif sys.argv[1] == 'interactive':
-            interactive_demo()
+    """Main function"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Motor Controller Client Example')
+    parser.add_argument('--socket-path', default='/tmp/motor-proxy/motor_controller.sock',
+                       help='Unix socket path')
+    parser.add_argument('--name', default='ExampleClient',
+                       help='Client name to identify as')
+    parser.add_argument('--mode', choices=['demo', 'interactive'], default='demo',
+                       help='Run mode: demo or interactive')
+
+    args = parser.parse_args()
+
+    print("🤖 Motor Controller Client Example")
+    print("=" * 50)
+
+    # Create and connect client
+    client = MotorControllerClient(args.socket_path, args.name)
+
+    if not client.connect():
+        return 1
+
+    try:
+        if args.mode == 'demo':
+            # Run demonstrations
+            demo_tank_commands(client)
+            demo_mecanum_commands(client)
+
+            print("\n📊 Getting final status...")
+            client.get_status()
+            time.sleep(2)
+
         else:
-            print("Usage: python client_example.py [auto|interactive]")
-            print("  auto       - Run automated demo")
-            print("  interactive - Run interactive demo (default)")
-    else:
-        interactive_demo()
+            # Interactive mode
+            interactive_mode(client)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Interrupted by user")
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+    finally:
+        client.disconnect()
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

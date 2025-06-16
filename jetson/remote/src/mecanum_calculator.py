@@ -116,11 +116,13 @@ class MecanumCalculator:
         # Normalize to ensure no motor exceeds max speed
         normalized_speeds = motor_speeds.normalize(self.max_speed)
 
-        logger.debug(f"Movement: F={forward:.2f}, S={strafe:.2f}, R={rotation:.2f} -> "
-                    f"Motors: LF={normalized_speeds.left_front:.2f}, "
-                    f"LR={normalized_speeds.left_rear:.2f}, "
-                    f"RF={normalized_speeds.right_front:.2f}, "
-                    f"RR={normalized_speeds.right_rear:.2f}")
+        # Only log significant movements to reduce noise
+        if (abs(forward) > 0.05 or abs(strafe) > 0.05 or abs(rotation) > 0.05):
+            logger.debug(f"Movement: F={forward:.2f}, S={strafe:.2f}, R={rotation:.2f} -> "
+                        f"Motors: LF={normalized_speeds.left_front:.2f}, "
+                        f"LR={normalized_speeds.left_rear:.2f}, "
+                        f"RF={normalized_speeds.right_front:.2f}, "
+                        f"RR={normalized_speeds.right_rear:.2f}")
 
         return normalized_speeds
 

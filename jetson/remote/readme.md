@@ -129,15 +129,37 @@ python main.py --mode development --controller-device /dev/input/js1
 
 | Control | Function |
 |---------|----------|
-| **Left Stick** | Robot movement (forward/back, strafe left/right) |
-| **Right Stick X** | Robot rotation (left/right) |
+| **Left Stick** | Robot movement (forward/back, strafe left/right in Mecanum mode; forward/back + rotation in Tank mode) |
+| **Right Stick X** | Robot rotation (left/right, Mecanum mode only) |
 | **R2 Trigger** | Speed boost mode |
 | **L2 Trigger** | Precision mode (slower, more precise) |
 | **Circle Button** | Emergency stop |
 | **Square Button** | Resume from emergency stop |
 | **Triangle Button** | Test movement patterns (development mode only) |
-| **Options Button** | Quit application |
-| **L1/R1** | Precision/Boost mode toggles |
+| **L1** | Precision mode toggle |
+| **R1** | Boost mode toggle |
+| **Options Button** | **Drive Mode Switch** - Toggle between Tank and Mecanum modes |
+
+**Note**: To quit the application, use **Ctrl+C** in the terminal.
+
+### 🚗 Drive Modes
+
+The remote control supports two driving modes:
+
+#### 🤖 Mecanum Mode (Default)
+- **Full omnidirectional movement** - Move in any direction while independently rotating
+- **Left stick**: Forward/backward + strafe left/right
+- **Right stick X**: Rotation around robot center
+- **Perfect for**: Complex maneuvers, precise positioning, sideways movement
+
+#### 🚗 Tank Mode
+- **Traditional tank-style driving** - Simplified control using only left stick
+- **Left stick Y**: Forward/backward movement
+- **Left stick X**: Rotation (turn left/right)
+- **Right stick**: Ignored
+- **Perfect for**: Simple navigation, familiar driving feel
+
+**Switch modes**: Press **L1** button to toggle between modes. Current mode is displayed in log messages.
 
 ## 🔧 Configuration
 
@@ -164,6 +186,34 @@ export CONTROLLER_DEVICE=/dev/input/js0
 export SOCKET_PATH=/tmp/motor-proxy/motor_controller.sock
 export LOG_LEVEL=INFO
 ```
+
+## 🔌 Communication Protocol
+
+The remote control communicates with the updated multiplexer using different protocols based on the drive mode:
+
+### Tank Mode Protocol
+```json
+{
+  "type": "tank_command",
+  "command": "FORWARD|BACKWARD|LEFT|RIGHT|STOP",
+  "value": 0-255
+}
+```
+
+### Mecanum Mode Protocol
+```json
+{
+  "type": "mecanum_command",
+  "motors": {
+    "left_front": -255,   // Individual motor speeds
+    "left_rear": 127,     // Range: -255 to 255
+    "right_front": 200,   // Negative = reverse
+    "right_rear": -100    // Positive = forward
+  }
+}
+```
+
+This allows the robot to utilize either simple tank-style movements or complex omnidirectional Mecanum capabilities based on the selected drive mode.
 
 ## 🤖 Mecanum Wheel Movement Patterns
 

@@ -92,12 +92,44 @@ class ControllerHandler:
 
         # Initialize pygame
         pygame.init()
+
+        # Set SDL environment variables for better joystick detection in containers
+        import os
+        os.environ.setdefault('SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS', '1')
+        if not self.is_macos and os.path.exists(device_path):
+            os.environ.setdefault('SDL_JOYSTICK_DEVICE', device_path)
+
         pygame.joystick.init()
+
+        # Log SDL environment for debugging
+        sdl_vars = ['SDL_VIDEODRIVER', 'SDL_JOYSTICK_DEVICE', 'SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS']
+        for var in sdl_vars:
+            value = os.environ.get(var, 'Not set')
+            logger.debug(f"SDL Environment: {var}={value}")
 
         if self.is_macos:
             logger.info(f"Initialized controller handler for macOS (auto-detection)")
         else:
             logger.info(f"Initialized controller handler for device: {device_path}")
+            # Check if device file exists and is readable
+            if os.path.exists(device_path):
+                logger.debug(f"Device file {device_path} exists")
+                try:
+                    with open(device_path, 'rb') as f:
+                        logger.debug(f"Device file {device_path} is readable")
+                except Exception as e:
+                    logger.warning(f"Device file {device_path} exists but not readable: {e}")
+            else:
+                logger.warning(f"Device file {device_path} does not exist")
+
+            # List all input devices for debugging
+            try:
+                input_devices = os.listdir("/dev/input/")
+                js_devices = [d for d in input_devices if d.startswith('js')]
+                event_devices = [d for d in input_devices if d.startswith('event')]
+                logger.debug(f"Available input devices - JS: {js_devices}, Event: {event_devices}")
+            except Exception as e:
+                logger.debug(f"Could not list /dev/input/ devices: {e}")
 
     def connect(self) -> bool:
         """
@@ -107,6 +139,10 @@ class ControllerHandler:
             bool: True if connection successful, False otherwise
         """
         try:
+            # Force refresh joystick detection (important for containers)
+            pygame.joystick.quit()
+            pygame.joystick.init()
+
             # Check for available joysticks
             joystick_count = pygame.joystick.get_count()
             logger.info(f"Found {joystick_count} joystick(s)")
@@ -117,6 +153,11 @@ class ControllerHandler:
                     logger.info("💡 On macOS: Connect via USB or make sure Bluetooth pairing is complete")
                 else:
                     logger.info(f"💡 On Linux: Check if controller is available at {self.device_path}")
+                    # Additional debugging for Linux
+                    import os
+                    if os.path.exists(self.device_path):
+                        logger.info(f"🔍 Device file exists but pygame can't detect it - this may be a permissions or SDL issue")
+                        logger.info(f"🔍 Try: sudo chmod 666 {self.device_path}")
                 return False
 
             # Try to find and connect to a suitable controller
@@ -296,7 +337,9 @@ class ControllerHandler:
             elif axis_id in [2, 3] and hasattr(self.joystick, 'get_numaxes') and self.joystick.get_numaxes() > 4:  # Right stick
                 self.on_stick_move("right", self.controller_state.right_stick_x, self.controller_state.right_stick_y)
 
-        logger.debug(f"Axis {axis_id} motion: {value}")
+        # Only log significant axis movements to reduce noise
+        if abs(value) > 0.1:  # Only log if movement is above deadzone
+            logger.debug(f"Axis {axis_id} motion: {value:.3f}")
 
     def _handle_hat_motion(self, hat_id: int, value: Tuple[int, int]):
         """Handle D-pad (hat) motion"""

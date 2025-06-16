@@ -1,5 +1,5 @@
 #!/bin/bash
-# Interactive deployment script for Remote Control Service (arm64 architecture)
+# Interactive deployment script for arm64 architecture
 # Usage: ./deploy_arm64.sh <jetson-ip> [username] [action] [deployment-type]
 
 set -e
@@ -9,8 +9,8 @@ JETSON_IP=$1
 USERNAME=${2:-jetson}
 ACTION=${3:-deploy}
 DEPLOY_TYPE=${4:-quick}
-IMAGE_FILE="remote-control-service-1.0.0-arm64.tar"
-IMAGE_TAG="remote-control-service:1.0.0-arm64"
+IMAGE_FILE="remote-control-service-latest.tar"
+IMAGE_TAG="remote-control-service:latest"
 CONTAINER_NAME="remote-control"
 
 # Function to show usage
@@ -26,13 +26,14 @@ show_usage() {
     echo "  logs     - Show container logs"
     echo ""
     echo "Deployment types (for deploy action):"
-    echo "  quick      - Quick start with auto-detection (default)"
-    echo "  production - Full production setup with logging"
+    echo "  quick      - Quick start in development mode (default)"
+    echo "  production - Production setup with socket communication"
     echo "  debug      - Debug mode with verbose logging"
     echo "  secure     - Secure setup with specific device access"
     echo ""
     echo "Examples:"
     echo "  $0 192.168.1.100 jetson deploy quick"
+    echo "  $0 192.168.1.100 jetson deploy production"
     echo "  $0 192.168.1.100 jetson stop"
     echo "  $0 192.168.1.100 jetson delete"
     echo "  $0 192.168.1.100 jetson clean"
@@ -87,11 +88,14 @@ clean_all() {
     delete_container
 
     echo "🧹 Removing Docker images..."
-    ssh $USERNAME@$JETSON_IP "docker images -q remote-control-service" 2>/dev/null | while read image_id; do
+    ssh $USERNAME@$JETSON_IP "docker images -q $IMAGE_TAG" 2>/dev/null | while read image_id; do
         if [ -n "$image_id" ]; then
             ssh $USERNAME@$JETSON_IP "docker rmi $image_id" || true
         fi
     done
+
+    echo "🧹 Cleaning up log files..."
+    ssh $USERNAME@$JETSON_IP "rm -rf /var/log/remote-control" || true
 
     echo "✅ Cleanup completed"
 }
@@ -106,13 +110,13 @@ show_status() {
         ssh $USERNAME@$JETSON_IP "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}' $CONTAINER_NAME" 2>/dev/null || echo "   Container not running"
         echo ""
         echo "🎮 Controller Status:"
-        if ssh $USERNAME@$JETSON_IP "test -e /dev/input/js0"; then
-            echo "   ✅ Controller device exists at /dev/input/js0"
+        if ssh $USERNAME@$JETSON_IP "docker exec $CONTAINER_NAME ls /dev/input/js* 2>/dev/null"; then
+            echo "   ✅ Controller devices found"
         else
-            echo "   ❌ Controller device not found"
+            echo "   ❌ No controller devices found"
         fi
         echo ""
-        echo "🔌 Socket Status:"
+        echo "🔌 Socket Status (Production Mode):"
         if ssh $USERNAME@$JETSON_IP "test -S /tmp/motor-proxy/motor_controller.sock"; then
             echo "   ✅ Motor controller socket exists"
         else
@@ -156,6 +160,7 @@ case $ACTION in
         show_logs
         ;;
     "deploy")
+
         echo "🚀 Deploying Remote Control Service to $USERNAME@$JETSON_IP..."
         echo "📦 Image: $IMAGE_TAG"
         echo "🎯 Deployment type: $DEPLOY_TYPE"
@@ -173,7 +178,7 @@ case $ACTION in
         scp $IMAGE_FILE $USERNAME@$JETSON_IP:/tmp/
 
         # Load image on remote host
-        echo "📦 Loading image on Jetson..."
+        echo "📦 Loading image on Jetson Nano..."
         ssh $USERNAME@$JETSON_IP "gunzip -c /tmp/$IMAGE_FILE | docker load"
 
         # Clean up transfer file
@@ -188,15 +193,16 @@ case $ACTION in
         # Deploy based on type
         case $DEPLOY_TYPE in
             "quick")
-                echo "🚀 Deploying with quick start configuration..."
+                echo "🚀 Deploying with quick start configuration (development mode)..."
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -e DISPLAY=:0 \\
+                    -v /tmp/.X11-unix:/tmp/.X11-unix \\
                     $IMAGE_TAG \\
-                    python main.py --mode production"
+                    python main.py --mode development --log-level INFO"
                 ;;
             "production")
                 echo "🏭 Deploying with production configuration..."
@@ -205,38 +211,48 @@ case $ACTION in
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
+                    --health-cmd='pgrep -f \"python main.py\"' \\
+                    --health-interval=30s \\
+                    --health-timeout=10s \\
+                    --health-retries=3 \\
                     -v /dev:/dev \\
                     -v /tmp/motor-proxy:/tmp/motor-proxy \\
                     -v /var/log/remote-control:/var/log/remote-control \\
-                    --log-driver json-file \\
-                    --log-opt max-size=10m \\
-                    --log-opt max-file=3 \\
+                    -e LOG_LEVEL=INFO \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --log-level INFO"
+                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level INFO"
                 ;;
             "debug")
                 echo "🐛 Deploying with debug configuration..."
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/remote-control"
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
+                    --health-cmd='pgrep -f \"python main.py\"' \\
+                    --health-interval=30s \\
+                    --health-timeout=10s \\
+                    --health-retries=3 \\
                     -v /dev:/dev \\
                     -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/log/remote-control:/var/log/remote-control \\
+                    -e LOG_LEVEL=DEBUG \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --log-level DEBUG"
+                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level DEBUG"
                 ;;
             "secure")
-                echo "🔒 Deploying with secure configuration..."
+                echo "🔐 Deploying with secure configuration..."
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --device=/dev/input/js0:/dev/input/js0 \\
+                    --device=/dev/input/js1:/dev/input/js1 \\
+                    --device=/dev/input/event0:/dev/input/event0 \\
+                    --device=/dev/input/event1:/dev/input/event1 \\
                     -v /tmp/motor-proxy:/tmp/motor-proxy \\
-                    --security-opt no-new-privileges \\
-                    --read-only \\
-                    --tmpfs /tmp \\
+                    -e CONTROLLER_DEVICE=/dev/input/js0 \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --controller-device /dev/input/js0"
+                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --controller-device /dev/input/js0"
                 ;;
             *)
                 echo "❌ Unknown deployment type: $DEPLOY_TYPE"
@@ -244,36 +260,28 @@ case $ACTION in
                 ;;
         esac
 
-        # Wait a moment for container to start
+        # Wait for container to start
         echo "⏳ Waiting for container to start..."
-        sleep 3
+        sleep 5
 
-        # Check if container is running
-        if container_running; then
-            echo "✅ Remote Control Service deployed successfully!"
-            echo ""
-            echo "📊 Container Status:"
-            show_status
-            echo ""
-            echo "💡 Useful commands:"
-            echo "   View logs: docker logs -f $CONTAINER_NAME"
-            echo "   Stop service: ./deploy_arm64.sh $JETSON_IP $USERNAME stop"
-            echo "   Check status: ./deploy_arm64.sh $JETSON_IP $USERNAME status"
-            echo ""
-            echo "🎮 Controller Mapping:"
-            echo "   Left Stick: Movement (forward/back, strafe left/right)"
-            echo "   Right Stick X: Rotation"
-            echo "   R2 Trigger: Speed boost"
-            echo "   L2 Trigger: Precision mode"
-            echo "   Circle: Emergency stop"
-            echo "   Square: Resume from emergency stop"
-            echo "   Options: Quit application"
+        # Check deployment status
+        echo "📊 Checking deployment status..."
+        ssh $USERNAME@$JETSON_IP "docker ps | grep $CONTAINER_NAME || echo 'Container not running!'"
+        ssh $USERNAME@$JETSON_IP "docker logs $CONTAINER_NAME --tail 10"
+
+        # Test controller detection
+        echo "🎮 Testing controller detection..."
+        if ssh $USERNAME@$JETSON_IP "docker exec $CONTAINER_NAME ls /dev/input/js* 2>/dev/null"; then
+            echo "✅ Controller devices found!"
         else
-            echo "❌ Failed to deploy Remote Control Service"
-            echo "📜 Container logs:"
-            show_logs
-            exit 1
+            echo "❌ No controller devices found! Make sure PS5 controller is connected."
         fi
+
+        echo ""
+        echo "✅ Deployment complete!"
+        echo "📊 Monitor with: ssh $USERNAME@$JETSON_IP 'docker logs -f $CONTAINER_NAME'"
+        echo "🛑 Stop with: $0 $JETSON_IP $USERNAME stop"
+        echo "🗑️  Delete with: $0 $JETSON_IP $USERNAME delete"
         ;;
     *)
         echo "❌ Unknown action: $ACTION"

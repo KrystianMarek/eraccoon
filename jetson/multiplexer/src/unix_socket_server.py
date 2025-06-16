@@ -38,13 +38,33 @@ class ClientInfo:
     last_activity: float
     priority: int = 10  # Lower number = higher priority
 
+    # Rate limiting
+    command_count: int = 0
+    last_command_time: float = 0.0
+    dropped_commands: int = 0
+    last_drop_log_time: float = 0.0
+
+    # Keepalive tracking
+    last_keepalive: float = 0.0
+    missed_keepalives: int = 0
+
+    # Unique naming
+    unique_name: str = ""
+    claimed_name: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'client_id': self.client_id,
+            'unique_name': self.unique_name,
+            'claimed_name': self.claimed_name,
             'address': self.address,
             'state': self.state.value,
             'last_activity': self.last_activity,
-            'priority': self.priority
+            'priority': self.priority,
+            'command_count': self.command_count,
+            'dropped_commands': self.dropped_commands,
+            'last_keepalive': self.last_keepalive,
+            'missed_keepalives': self.missed_keepalives
         }
 
 
@@ -64,10 +84,20 @@ class MotorProxyServer:
         self.clients: Dict[str, ClientInfo] = {}
         self.clients_lock = threading.Lock()
         self.active_client_id: Optional[str] = None
+        self.client_counter = 0  # For unique client naming
+
+        # Rate limiting configuration
+        self.base_rate_limit = 10.0  # Base commands per second per client
+        self.min_rate_limit = 1.0   # Minimum rate limit per client
+
+        # Keepalive configuration
+        self.keepalive_timeout = 3.0  # Seconds between required keepalives
+        self.max_missed_keepalives = 3  # Max consecutive missed keepalives before disconnect
 
         # Server state
         self.running = False
         self.server_thread: Optional[threading.Thread] = None
+        self.keepalive_thread: Optional[threading.Thread] = None
 
         # Command queuing
         self.command_queue: List[Dict[str, Any]] = []
@@ -78,6 +108,7 @@ class MotorProxyServer:
             'start_time': time.time(),
             'total_connections': 0,
             'commands_processed': 0,
+            'commands_dropped': 0,
             'errors': 0
         }
 
@@ -116,6 +147,10 @@ class MotorProxyServer:
             # Start server thread
             self.server_thread = threading.Thread(target=self._server_loop, daemon=True)
             self.server_thread.start()
+
+            # Start keepalive monitoring thread
+            self.keepalive_thread = threading.Thread(target=self._keepalive_monitor, daemon=True)
+            self.keepalive_thread.start()
 
             current_port = self.serial_controller.get_current_port()
             logger.info(f"Motor proxy server started on {self.socket_path}")
@@ -163,9 +198,13 @@ class MotorProxyServer:
             try:
                 if self.server_socket:
                     client_socket, address = self.server_socket.accept()
-                    client_id = f"client_{int(time.time() * 1000) % 100000}"
 
-                    logger.info(f"New client connected: {client_id}")
+                    # Generate unique client ID and name
+                    self.client_counter += 1
+                    client_id = f"client_{int(time.time() * 1000) % 100000}"
+                    unique_name = f"Client-{self.client_counter:03d}"
+
+                    logger.info(f"New client connected: {client_id} ({unique_name})")
                     self.stats['total_connections'] += 1
 
                     # Log current sensor data flow status for debugging
@@ -174,15 +213,18 @@ class MotorProxyServer:
                     logger.info(f"Client connection - Current sensor count: {sensor_count}, Last sensor: {sensor_data is not None}")
 
                     # Create client info
+                    current_time = time.time()
                     client_info = ClientInfo(
                         client_id=client_id,
                         socket=client_socket,
                         address=str(address),
                         state=ClientState.CONNECTED,
-                        last_activity=time.time()
+                        last_activity=current_time,
+                        unique_name=unique_name,
+                        last_keepalive=current_time  # Initialize keepalive timer
                     )
 
-                                        # Set socket timeout to prevent blocking recv() calls
+                    # Set socket timeout to prevent blocking recv() calls
                     client_socket.settimeout(1.0)  # 1 second timeout
 
                     with self.clients_lock:
@@ -262,16 +304,30 @@ class MotorProxyServer:
 
             logger.debug(f"Client {client_id} sent: {msg_type}")
 
+            # Update client activity
+            with self.clients_lock:
+                if client_id in self.clients:
+                    self.clients[client_id].last_activity = time.time()
+
             if msg_type == 'ping':
                 self._send_to_client(client_id, {'type': 'pong', 'timestamp': time.time()})
 
             elif msg_type == 'get_status':
                 self._send_status_to_client(client_id)
 
+            elif msg_type == 'keepalive':
+                self._handle_keepalive(client_id, data)
+
             elif msg_type == 'tank_command':
+                # Apply rate limiting for motor commands
+                if self._should_rate_limit_client(client_id):
+                    return  # Command dropped due to rate limiting
                 self._handle_tank_command(client_id, data)
 
             elif msg_type == 'mecanum_command':
+                # Apply rate limiting for motor commands
+                if self._should_rate_limit_client(client_id):
+                    return  # Command dropped due to rate limiting
                 self._handle_mecanum_command(client_id, data)
 
             elif msg_type == 'set_priority':
@@ -279,6 +335,9 @@ class MotorProxyServer:
 
             elif msg_type == 'get_sensor_data':
                 self._send_sensor_data_to_client(client_id)
+
+            elif msg_type == 'identify':
+                self._handle_client_identify(client_id, data)
 
             else:
                 self._send_to_client(client_id, {
@@ -303,22 +362,55 @@ class MotorProxyServer:
         command = data.get('command', '').upper()
         value = data.get('value', 0)
 
-        # Check if client has control priority
+        # Get client info for logging
+        with self.clients_lock:
+            client = self.clients.get(client_id)
+            client_name = client.unique_name if client else client_id
+
+        # Handle KEEPALIVE command specially
+        if command == 'KEEPALIVE':
+            # Update keepalive timestamp
+            if client:
+                with self.clients_lock:
+                    client.last_keepalive = time.time()
+                    client.missed_keepalives = 0
+
+            # Send keepalive to Arduino
+            success = self.serial_controller.send_tank_command(command, value)
+
+            # Send response to client
+            response = {
+                'type': 'tank_command_response',
+                'command': command,
+                'value': value,
+                'success': success,
+                'timestamp': time.time()
+            }
+            self._send_to_client(client_id, response)
+
+            # Update stats
+            self.stats['commands_processed'] += 1
+            if not success:
+                self.stats['errors'] += 1
+
+            return
+
+        # Check if client has control priority for non-keepalive commands
         if not self._can_client_control(client_id):
             self._send_to_client(client_id, {
                 'type': 'error',
-                'message': 'Access denied - another client has higher priority'
+                'message': f'Access denied - another client has higher priority (from {client_name})'
             })
             return
 
         # Validate command
-        valid_commands = {'FORWARD', 'BACKWARD', 'LEFT', 'RIGHT', 'STOP', 'RESET', 'KEEPALIVE',
+        valid_commands = {'FORWARD', 'BACKWARD', 'LEFT', 'RIGHT', 'STOP', 'RESET',
                          'FORWARD_LEFT', 'FORWARD_RIGHT', 'BACKWARD_LEFT', 'BACKWARD_RIGHT'}
 
         if command not in valid_commands:
             self._send_to_client(client_id, {
                 'type': 'error',
-                'message': f'Invalid tank command: {command}'
+                'message': f'Invalid tank command: {command} (from {client_name})'
             })
             return
 
@@ -326,7 +418,7 @@ class MotorProxyServer:
         if not (0 <= value <= 255):
             self._send_to_client(client_id, {
                 'type': 'error',
-                'message': f'Invalid value: {value}. Must be 0-255'
+                'message': f'Invalid value: {value}. Must be 0-255 (from {client_name})'
             })
             return
 
@@ -354,11 +446,43 @@ class MotorProxyServer:
 
     def _handle_mecanum_command(self, client_id: str, data: Dict[str, Any]):
         """Handle mecanum-style motor command from client"""
-        # Check if client has control priority
+        # Get client info for logging
+        with self.clients_lock:
+            client = self.clients.get(client_id)
+            client_name = client.unique_name if client else client_id
+
+        # Check for KEEPALIVE command in mecanum format
+        if data.get('command') == 'KEEPALIVE':
+            # Update keepalive timestamp
+            if client:
+                with self.clients_lock:
+                    client.last_keepalive = time.time()
+                    client.missed_keepalives = 0
+
+            # Send keepalive to Arduino (using tank format for keepalive)
+            success = self.serial_controller.send_tank_command('KEEPALIVE', 0)
+
+            # Send response to client
+            response = {
+                'type': 'mecanum_command_response',
+                'command': 'KEEPALIVE',
+                'success': success,
+                'timestamp': time.time()
+            }
+            self._send_to_client(client_id, response)
+
+            # Update stats
+            self.stats['commands_processed'] += 1
+            if not success:
+                self.stats['errors'] += 1
+
+            return
+
+        # Check if client has control priority for motor commands
         if not self._can_client_control(client_id):
             self._send_to_client(client_id, {
                 'type': 'error',
-                'message': 'Access denied - another client has higher priority'
+                'message': f'Access denied - another client has higher priority (from {client_name})'
             })
             return
 
@@ -372,9 +496,9 @@ class MotorProxyServer:
         # Validate motor speed ranges
         def validate_speed(speed, motor_name):
             if not isinstance(speed, (int, float)):
-                return False, f'{motor_name} speed must be a number'
+                return False, f'{motor_name} speed must be a number (from {client_name})'
             if not (-255 <= speed <= 255):
-                return False, f'{motor_name} speed must be between -255 and 255'
+                return False, f'{motor_name} speed must be between -255 and 255 (from {client_name})'
             return True, None
 
         for speed, name in [(left_front, 'left_front'), (left_rear, 'left_rear'),
@@ -414,6 +538,41 @@ class MotorProxyServer:
         # Set active client
         if success:
             self.active_client_id = client_id
+
+    def _handle_keepalive(self, client_id: str, data: Dict[str, Any]):
+        """Handle keepalive message from client"""
+        with self.clients_lock:
+            if client_id in self.clients:
+                client = self.clients[client_id]
+                client.last_keepalive = time.time()
+                client.missed_keepalives = 0  # Reset missed count
+
+                logger.debug(f"Keepalive received from {client.unique_name}")
+
+                # Send keepalive response
+                self._send_to_client(client_id, {
+                    'type': 'keepalive_response',
+                    'timestamp': time.time()
+                })
+
+    def _handle_client_identify(self, client_id: str, data: Dict[str, Any]):
+        """Handle client identification message"""
+        claimed_name = data.get('name', 'Unknown')
+
+        with self.clients_lock:
+            if client_id in self.clients:
+                client = self.clients[client_id]
+                client.claimed_name = claimed_name
+
+                logger.info(f"Client {client.unique_name} identifies as '{claimed_name}'")
+
+                # Send identification response
+                self._send_to_client(client_id, {
+                    'type': 'identify_response',
+                    'unique_name': client.unique_name,
+                    'claimed_name': claimed_name,
+                    'timestamp': time.time()
+                })
 
     def _handle_set_priority(self, client_id: str, priority: int):
         """Handle client priority change"""
@@ -576,3 +735,87 @@ class MotorProxyServer:
         })
 
         logger.info(f"Arduino connection state changed to: {state.value} (port: {current_port})")
+
+    def _keepalive_monitor(self):
+        """Monitor client keepalives and disconnect inactive clients"""
+        logger.debug("Starting keepalive monitor")
+
+        while self.running:
+            try:
+                current_time = time.time()
+                clients_to_disconnect = []
+
+                with self.clients_lock:
+                    for client_id, client in self.clients.items():
+                        # Check if client has missed too many keepalives
+                        time_since_keepalive = current_time - client.last_keepalive
+
+                        if time_since_keepalive > self.keepalive_timeout:
+                            client.missed_keepalives += 1
+                            logger.debug(f"Client {client.unique_name} missed keepalive #{client.missed_keepalives}")
+
+                            if client.missed_keepalives >= self.max_missed_keepalives:
+                                logger.warning(f"Client {client.unique_name} ({client_id}) missed {client.missed_keepalives} keepalives, disconnecting")
+                                clients_to_disconnect.append(client_id)
+                            else:
+                                # Reset keepalive timer for next check
+                                client.last_keepalive = current_time
+
+                # Disconnect clients outside the lock
+                for client_id in clients_to_disconnect:
+                    self._disconnect_client(client_id)
+
+                time.sleep(1.0)  # Check every second
+
+            except Exception as e:
+                if self.running:
+                    logger.error(f"Error in keepalive monitor: {e}")
+
+        logger.debug("Keepalive monitor stopped")
+
+    def _get_rate_limit_for_client(self, client_id: str) -> float:
+        """Calculate rate limit for a client based on number of connected clients"""
+        with self.clients_lock:
+            num_clients = len(self.clients)
+
+        if num_clients <= 1:
+            return self.base_rate_limit
+
+        # Distribute available bandwidth among clients
+        rate_per_client = self.base_rate_limit / num_clients
+        return max(rate_per_client, self.min_rate_limit)
+
+    def _should_rate_limit_client(self, client_id: str) -> bool:
+        """Check if client should be rate limited"""
+        with self.clients_lock:
+            client = self.clients.get(client_id)
+            if not client:
+                return True
+
+            current_time = time.time()
+            rate_limit = self._get_rate_limit_for_client(client_id)
+
+            # Reset counter if enough time has passed
+            if current_time - client.last_command_time >= 1.0:
+                client.command_count = 0
+                client.last_command_time = current_time
+
+            # Check if client exceeds rate limit
+            if client.command_count >= rate_limit:
+                client.dropped_commands += 1
+                self.stats['commands_dropped'] += 1
+
+                # Log rate limiting (max once per second per client)
+                if current_time - client.last_drop_log_time >= 1.0:
+                    parsed_commands = client.command_count
+                    total_received = parsed_commands + client.dropped_commands
+                    logger.warning(f"Rate limiting {client.unique_name}: received {total_received} commands, parsed {parsed_commands}, dropped {client.dropped_commands}")
+                    client.last_drop_log_time = current_time
+                    # Reset dropped counter after logging
+                    client.dropped_commands = 0
+
+                return True
+
+            # Allow command
+            client.command_count += 1
+            return False

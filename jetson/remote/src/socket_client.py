@@ -121,9 +121,9 @@ class SocketClient:
             self.disconnect()
             return False
 
-    def send_motor_command(self, command: str, value: int) -> bool:
+    def send_tank_command(self, command: str, value: int) -> bool:
         """
-        Send a motor command to the robot
+        Send a tank-style motor command to the robot
 
         Args:
             command: Motor command (FORWARD, BACKWARD, LEFT, RIGHT, etc.)
@@ -133,7 +133,7 @@ class SocketClient:
             bool: True if command sent successfully, False otherwise
         """
         message = {
-            'type': 'motor_command',
+            'type': 'tank_command',
             'command': command.upper(),
             'value': max(0, min(255, value))  # Clamp to valid range
         }
@@ -141,10 +141,58 @@ class SocketClient:
         success = self.send_message(message)
         if success:
             # Log motor commands at DATA level for visibility
-            logger.data(f"🎮 Motor command: {command}:{value}")
-            logger.debug(f"🎮 Sent motor command: {command}:{value}")
+            logger.data(f"🚗 Tank command: {command}:{value}")
+            logger.debug(f"🚗 Sent tank command: {command}:{value}")
 
         return success
+
+    def send_mecanum_command(self, left_front: int, left_rear: int, right_front: int, right_rear: int) -> bool:
+        """
+        Send a mecanum-style motor command to the robot
+
+        Args:
+            left_front: Left front motor speed (-255 to 255)
+            left_rear: Left rear motor speed (-255 to 255)
+            right_front: Right front motor speed (-255 to 255)
+            right_rear: Right rear motor speed (-255 to 255)
+
+        Returns:
+            bool: True if command sent successfully, False otherwise
+        """
+        # Clamp values to valid range
+        def clamp(value):
+            return max(-255, min(255, int(value)))
+
+        message = {
+            'type': 'mecanum_command',
+            'motors': {
+                'left_front': clamp(left_front),
+                'left_rear': clamp(left_rear),
+                'right_front': clamp(right_front),
+                'right_rear': clamp(right_rear)
+            }
+        }
+
+        success = self.send_message(message)
+        if success:
+            # Log motor commands at DATA level for visibility
+            logger.data(f"🤖 Mecanum command: LF={left_front}, LR={left_rear}, RF={right_front}, RR={right_rear}")
+            logger.debug(f"🤖 Sent mecanum command: LF={left_front}, LR={left_rear}, RF={right_front}, RR={right_rear}")
+
+        return success
+
+    def send_motor_command(self, command: str, value: int) -> bool:
+        """
+        Send a motor command to the robot (legacy method - uses tank commands)
+
+        Args:
+            command: Motor command (FORWARD, BACKWARD, LEFT, RIGHT, etc.)
+            value: Speed value (0-255)
+
+        Returns:
+            bool: True if command sent successfully, False otherwise
+        """
+        return self.send_tank_command(command, value)
 
     def stop_robot(self) -> bool:
         """
@@ -257,7 +305,7 @@ class SocketClient:
             elif msg_type == 'status':
                 self._handle_status_message(data)
 
-            elif msg_type == 'command_response':
+            elif msg_type in ['command_response', 'tank_command_response', 'mecanum_command_response']:
                 self._handle_command_response(data)
 
             elif msg_type == 'sensor_data':
@@ -293,17 +341,32 @@ class SocketClient:
 
     def _handle_command_response(self, data: Dict[str, Any]):
         """Handle command response from motor controller"""
-        command = data.get('command', '')
-        value = data.get('value', 0)
+        msg_type = data.get('type', '')
         success = data.get('success', False)
-
         self.last_command_success = success
 
         status = "✅" if success else "❌"
-        logger.debug(f"🎮 {status} Command {command}:{value}")
 
-        if not success:
-            logger.warning(f"Command failed: {command}:{value}")
+        if msg_type == 'tank_command_response':
+            command = data.get('command', '')
+            value = data.get('value', 0)
+            logger.debug(f"🚗 {status} Tank command {command}:{value}")
+            if not success:
+                logger.warning(f"Tank command failed: {command}:{value}")
+
+        elif msg_type == 'mecanum_command_response':
+            motors = data.get('motors', {})
+            logger.debug(f"🤖 {status} Mecanum command LF:{motors.get('left_front')} "
+                        f"LR:{motors.get('left_rear')} RF:{motors.get('right_front')} RR:{motors.get('right_rear')}")
+            if not success:
+                logger.warning(f"Mecanum command failed")
+
+        else:  # Legacy command_response
+            command = data.get('command', '')
+            value = data.get('value', 0)
+            logger.debug(f"🎮 {status} Command {command}:{value}")
+            if not success:
+                logger.warning(f"Command failed: {command}:{value}")
 
     def _handle_sensor_data(self, data: Dict[str, Any]):
         """Handle sensor data from motor controller"""
