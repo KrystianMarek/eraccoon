@@ -2,7 +2,7 @@
 
 ![Robot Platform](doc/img/IMG_1099.jpg)
 
-Vibe coded with [cursor](https://www.cursor.com/) and [claude-4-sonnet](https://chat.chatbot.app/claude)
+[Vibe coded](https://en.wikipedia.org/wiki/Vibe_coding) with [cursor](https://www.cursor.com/) and [claude-4-sonnet](https://chat.chatbot.app/claude)
 
 A sophisticated DIY robotics platform featuring omnidirectional movement with Mecanum wheels, Arduino-based motor control, and Nvidia Jetson Nano onboard computer. This multi-repository project demonstrates modern robotics software architecture with robust communication protocols, remote control capabilities, and production-ready deployment.
 
