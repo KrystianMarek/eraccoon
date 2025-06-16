@@ -205,6 +205,18 @@ case $ACTION in
         echo "🧹 Cleaning up transfer file..."
         ssh $USERNAME@$JETSON_IP "rm /tmp/$IMAGE_FILE"
 
+                # Find RealSense USB device
+        echo "🔍 Detecting RealSense USB device..."
+        REALSENSE_DEVICE=$(ssh $USERNAME@$JETSON_IP "lsusb | grep '8086:0b3a' | awk '{print $2\" \"$4}' | sed 's/://'" || echo "")
+        if [ -n "$REALSENSE_DEVICE" ]; then
+            REALSENSE_USB="/dev/bus/usb/$(echo $REALSENSE_DEVICE | tr ' ' '/')"
+            echo "✅ Found RealSense at: $REALSENSE_USB"
+            USB_DEVICE_ARGS="--device=$REALSENSE_USB"
+        else
+            echo "⚠️  RealSense device not found, using general USB access"
+            USB_DEVICE_ARGS="--device=/dev/bus/usb -v /sys/bus/usb:/sys/bus/usb -v /sys/devices:/sys/devices"
+        fi
+
         # Deploy based on type
         case $DEPLOY_TYPE in
             "quick")
@@ -213,40 +225,43 @@ case $ACTION in
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
+                    $USB_DEVICE_ARGS \\
                     -v /dev:/dev \\
                     -p 5000:5000 \\
                     $IMAGE_TAG"
                 ;;
             "production")
-                echo "🏭 Deploying with production configuration..."
-                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/realsense-webcam"
-                ssh $USERNAME@$JETSON_IP "docker run -d \\
-                    --name $CONTAINER_NAME \\
-                    --restart unless-stopped \\
-                    --privileged \\
-                    --health-cmd='curl -f http://localhost:5000/status || exit 1' \\
-                    --health-interval=30s \\
-                    --health-timeout=10s \\
-                    --health-retries=3 \\
-                    -v /dev:/dev \\
-                    -v /var/log/realsense-webcam:/var/log/realsense-webcam \\
-                    -p 5000:5000 \\
-                    -e FLASK_ENV=production \\
-                    $IMAGE_TAG"
+                                 echo "🏭 Deploying with production configuration..."
+                 ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/realsense-webcam"
+                 ssh $USERNAME@$JETSON_IP "docker run -d \\
+                     --name $CONTAINER_NAME \\
+                     --restart unless-stopped \\
+                     --privileged \\
+                     $USB_DEVICE_ARGS \\
+                     --health-cmd='curl -f http://localhost:5000/status || exit 1' \\
+                     --health-interval=30s \\
+                     --health-timeout=10s \\
+                     --health-retries=3 \\
+                     -v /dev:/dev \\
+                     -v /var/log/realsense-webcam:/var/log/realsense-webcam \\
+                     -p 5000:5000 \\
+                     -e FLASK_ENV=production \\
+                     $IMAGE_TAG"
                 ;;
             "debug")
-                echo "🐛 Deploying with debug configuration..."
-                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/realsense-webcam"
-                ssh $USERNAME@$JETSON_IP "docker run -d \\
-                    --name $CONTAINER_NAME \\
-                    --restart unless-stopped \\
-                    --privileged \\
-                    -v /dev:/dev \\
-                    -v /var/log/realsense-webcam:/var/log/realsense-webcam \\
-                    -p 5000:5000 \\
-                    -e FLASK_ENV=development \\
-                    -e FLASK_DEBUG=1 \\
-                    $IMAGE_TAG"
+                                 echo "🐛 Deploying with debug configuration..."
+                 ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/realsense-webcam"
+                 ssh $USERNAME@$JETSON_IP "docker run -d \\
+                     --name $CONTAINER_NAME \\
+                     --restart unless-stopped \\
+                     --privileged \\
+                     $USB_DEVICE_ARGS \\
+                     -v /dev:/dev \\
+                     -v /var/log/realsense-webcam:/var/log/realsense-webcam \\
+                     -p 5000:5000 \\
+                     -e FLASK_ENV=development \\
+                     -e FLASK_DEBUG=1 \\
+                     $IMAGE_TAG"
                 ;;
             *)
                 echo "❌ Unknown deployment type: $DEPLOY_TYPE"

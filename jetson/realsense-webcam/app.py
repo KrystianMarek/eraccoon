@@ -95,7 +95,9 @@ class RealSenseCamera:
         while self.is_streaming:
             try:
                 # Wait for a coherent pair of frames: depth and color (with timeout)
+                print("Waiting for frames...")
                 frames = self.pipeline.wait_for_frames(timeout_ms=5000)
+                print("Got frames from pipeline")
                 depth_frame = frames.get_depth_frame()
                 color_frame = frames.get_color_frame()
 
