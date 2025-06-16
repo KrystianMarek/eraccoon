@@ -24,7 +24,7 @@ from typing import Optional
 class IntelligentKeepaliveDemo:
     """Demo client showcasing intelligent keepalive behavior"""
 
-    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock'):
+    def __init__(self, socket_path: str = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'):
         self.socket_path = socket_path
         self.socket: Optional[socket.socket] = None
         self.running = False
@@ -293,7 +293,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Intelligent Keepalive System Demo')
-    parser.add_argument('--socket-path', default='/tmp/motor-proxy/motor_controller.sock',
+    parser.add_argument('--socket-path', default='/var/eraccoon/multiplexer/socket/motor_proxy_service.sock',
                        help='Unix socket path')
 
     args = parser.parse_args()

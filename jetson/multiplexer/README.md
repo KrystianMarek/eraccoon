@@ -108,7 +108,7 @@ docker run -d \
   --name motor-proxy \
   --privileged \
   -v /dev:/dev \
-  -v /tmp/motor-proxy:/tmp/motor-proxy \
+  -v /var/eraccoon:/var/eraccoon \
   motor-controller-proxy:latest
 ```
 
@@ -216,13 +216,26 @@ python examples/rate_limit_test.py --test both --clients 5
 - Command drop statistics
 - Client disconnection testing
 
+#### 5. Intelligent Keepalive Demo (`examples/intelligent_keepalive_demo.py`)
+**Purpose**: Demonstrates the intelligent keepalive system behavior
+```bash
+# Run complete intelligent keepalive demonstration
+python examples/intelligent_keepalive_demo.py
+```
+**Features**:
+- Shows keepalive behavior during idle periods
+- Demonstrates keepalive ignoring during active control
+- Illustrates motor commands acting as implicit keepalives
+- Mixed activity scenario demonstrations
+- Real-time keepalive response tracking
+
 ### Basic Control
 
 ```python
 from examples.client_example import MotorProxyClient
 
 # Connect to proxy
-client = MotorProxyClient('/tmp/motor-proxy/motor_controller.sock')
+client = MotorProxyClient('/var/eraccoon/multiplexer/socket/motor_proxy_service.sock')
 client.connect()
 
 # Control robot
@@ -238,18 +251,33 @@ client.get_sensor_data()   # Current sensor readings
 client.disconnect()
 ```
 
-### Testing New Command Format
+### Testing and Examples
 
-A test script is provided to verify the new JSON command format:
+The project includes comprehensive examples for testing all functionality:
 
 ```bash
-# Test both tank and mecanum commands
-python test_new_commands.py
+# Test intelligent keepalive system behavior
+python examples/intelligent_keepalive_demo.py
+
+# Test rate limiting and multiple client connections
+python examples/rate_limit_test.py --test both --clients 3
+
+# Interactive motor control with all features
+python examples/client_example.py --mode interactive
+
+# Advanced mecanum wheel control demonstrations
+python examples/mecanum_client_example.py
+
+# Monitor real-time sensor data and system events
+python examples/monitor_sensors.py
 ```
 
-This script tests:
-- Tank command format and responses
-- Mecanum command format and responses
+These examples demonstrate:
+- Intelligent keepalive system behavior
+- Tank and mecanum command formats and responses
+- Rate limiting and connection management
+- Multi-client scenarios and priority handling
+- Real-time sensor data monitoring
 - Error handling and validation
 
 ### Command Line Options
@@ -260,7 +288,7 @@ python main.py --help
 Options:
   --serial-port PORT    Arduino serial port (default: auto-detect)
   --baud-rate RATE      Serial baud rate (default: 115200)
-  --socket-path PATH    Unix socket path (default: /tmp/motor-proxy/motor_controller.sock)
+  --socket-path PATH    Unix socket path (default: /var/eraccoon/multiplexer/socket/motor_proxy_service.sock)
   --log-level LEVEL     Logging level (DEBUG, INFO, WARNING, ERROR)
   --log-file FILE       Log to file (optional)
   --daemon              Run as daemon
@@ -272,7 +300,7 @@ Options:
 |----------|---------|-------------|
 | `SERIAL_PORT` | `""` (auto-detect) | Arduino serial port |
 | `BAUD_RATE` | `115200` | Serial communication baud rate |
-| `SOCKET_PATH` | `/tmp/motor-proxy/motor_controller.sock` | Unix socket path |
+| `SOCKET_PATH` | `/var/eraccoon/multiplexer/socket/motor_proxy_service.sock` | Unix socket path |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
 | `LOG_FILE` | | Optional log file path |
 | `DAEMON_MODE` | `false` | Run as daemon |
@@ -281,7 +309,7 @@ Options:
 
 ### Connection Process
 
-1. **Client connects** to Unix socket at `/tmp/motor-proxy/motor_controller.sock`
+1. **Client connects** to Unix socket at `/var/eraccoon/multiplexer/socket/motor_proxy_service.sock`
 2. **Server sends welcome message** with client ID and server version
 3. **Client should send identification** with claimed name (optional but recommended)
 4. **Server assigns unique name** independent of client claims
@@ -569,7 +597,7 @@ The server intelligently responds based on client activity:
 
 #### Connection Management
 - **Socket Type**: `AF_UNIX`, `SOCK_STREAM`
-- **Socket Path**: `/tmp/motor-proxy/motor_controller.sock`
+- **Socket Path**: `/var/eraccoon/multiplexer/socket/motor_proxy_service.sock`
 - **Permissions**: `0666` (configurable)
 - **Timeout**: 1 second for client recv operations
 - **Send Timeout**: 100ms to prevent blocking on slow clients
@@ -672,7 +700,7 @@ The server intelligently responds based on client activity:
 ```bash
 -e SERIAL_PORT=""              # Auto-detect (default) or specific port
 -e BAUD_RATE=115200           # Serial communication speed
--e SOCKET_PATH=/tmp/motor-proxy/motor_controller.sock
+-e SOCKET_PATH=/var/eraccoon/multiplexer/socket/motor_proxy_service.sock
 -e LOG_LEVEL=INFO             # DEBUG, INFO, WARNING, ERROR
 -e LOG_FILE=""                # Optional log file path
 -e DAEMON_MODE=false          # Run as daemon
@@ -680,7 +708,7 @@ The server intelligently responds based on client activity:
 
 #### Volume Mounts
 ```bash
--v /tmp/motor-proxy:/tmp/motor-proxy    # Socket directory (required)
+-v /var/eraccoon:/var/eraccoon    # Socket directory (required)
 -v /var/log/motor-proxy:/var/log/motor-proxy  # Log files (optional)
 -v /dev:/dev                            # Device access (for auto-detection)
 ```
@@ -717,12 +745,12 @@ docker run -d \
   --name motor-proxy \
   --restart unless-stopped \
   --privileged \
-  --health-cmd="test -S /tmp/motor-proxy/motor_controller.sock" \
+  --health-cmd="test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock" \
   --health-interval=30s \
   --health-timeout=10s \
   --health-retries=3 \
   -v /dev:/dev \
-  -v /tmp/motor-proxy:/tmp/motor-proxy \
+  -v /var/eraccoon:/var/eraccoon \
   -v /var/log/motor-proxy:/var/log/motor-proxy \
   -e LOG_LEVEL=INFO \
   -e LOG_FILE=/var/log/motor-proxy/motor-proxy.log \
@@ -731,7 +759,7 @@ docker run -d \
 # Check status
 docker ps
 docker logs motor-proxy
-docker exec motor-proxy ls -la /tmp/motor-proxy/
+docker exec motor-proxy ls -la /var/eraccoon/multiplexer/socket/
 ```
 
 ## 🔧 Recent Improvements
@@ -777,7 +805,7 @@ docker exec -it motor-proxy python examples/client_example.py
 
 # On host (if socket is accessible)
 python examples/monitor_sensors.py
-python examples/client_example.py auto
+python examples/client_example.py --mode demo
 ```
 
 ### Multi-Client Testing
@@ -825,23 +853,25 @@ c.turn_left(40)  # Should be rejected
 
 ```
 multiplexer/
-├── src/                          # Core modules
-│   ├── __init__.py              # Version and build info
-│   ├── serial_controller.py     # Arduino communication & auto-reconnection
-│   ├── unix_socket_server.py    # Unix socket server & client management
-│   └── build_info.json         # Build metadata (generated)
-├── examples/                     # Example clients
-│   ├── monitor_sensors.py       # Full data monitoring client
-│   └── client_example.py        # Clean command interface client
-├── firmware/                     # Arduino firmware documentation
+├── src/                                    # Core modules
+│   ├── __init__.py                        # Version and build info
+│   ├── serial_controller.py               # Arduino communication & auto-reconnection
+│   ├── unix_socket_server.py              # Unix socket server & client management
+│   └── build_info.json                   # Build metadata (generated)
+├── examples/                               # Example clients
+│   ├── client_example.py                  # Basic motor control with keepalive management
+│   ├── mecanum_client_example.py          # Advanced mecanum wheel control
+│   ├── monitor_sensors.py                 # Real-time data monitoring client
+│   ├── rate_limit_test.py                 # Multi-client testing and rate limiting
+│   └── intelligent_keepalive_demo.py      # Intelligent keepalive system demo
+├── firmware/                               # Arduino firmware documentation
 │   ├── ARDUINO_SERIAL_ANALYSIS.md
 │   └── readme.md
-├── main.py                       # Entry point
-├── requirements.txt              # Python dependencies
-├── Dockerfile                    # Multi-arch container definition
-├── docker_build.sh              # Build script with multi-arch support
-├── deploy_arm64.sh              # Deployment script (generated by docker_build.sh)
-└── README.md                     # This file
+├── main.py                                 # Entry point
+├── requirements.txt                        # Python dependencies
+├── Dockerfile                              # Multi-arch container definition
+├── docker_build.sh                        # Build script with multi-arch support
+└── README.md                               # This file
 ```
 
 ## 🔧 Configuration
@@ -869,5 +899,27 @@ ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null || echo "No Arduino ports found"
 ```
 
 ### Socket Configuration
+
+The service creates a Unix domain socket for client communication:
+
+```bash
+# Default socket location
+/var/eraccoon/multiplexer/socket/motor_proxy_service.sock
+
+# Directory structure created automatically
+/var/eraccoon/
+└── multiplexer/
+    └── socket/
+        └── motor_proxy_service.sock
+
+# Socket permissions: 0666 (readable/writable by all)
+# Directory permissions: 0755 (standard directory permissions)
+```
+
+**Important Notes:**
+- The socket directory path must be mounted as a volume in Docker deployments
+- The service automatically creates the directory structure if it doesn't exist
+- Socket file is removed on service shutdown and recreated on startup
+- All example clients use this path by default, but it can be overridden via `--socket-path`
 
 ```

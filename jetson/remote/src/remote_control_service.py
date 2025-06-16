@@ -44,7 +44,7 @@ class RemoteControlService:
 
     def __init__(self, mode: str = 'development',
                  controller_device: str = '/dev/input/js0',
-                 socket_path: str = '/tmp/motor-proxy/motor_controller.sock',
+                 socket_path: str = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock',
                  simulation_width: int = 800,
                  simulation_height: int = 600):
         """
@@ -99,8 +99,19 @@ class RemoteControlService:
         self.socket_send_interval = 0.1  # Send to socket at most every 100ms (10 Hz)
         self.pending_socket_send = False  # Flag to indicate data needs to be sent
 
+        # Motor speed smoothing to reduce vibrations
+        self.smoothing_enabled = True
+        self.smoothing_factor = 0.3  # How much of new speed to blend in (0.1 = very smooth, 0.5 = moderate, 1.0 = no smoothing)
+        self.min_speed_change = 0.05  # Minimum change required to update motors (reduces micro-movements)
+        self.target_motor_speeds = MotorSpeeds()  # Target speeds from controller
+
+        # Motor deadzone - values below this threshold are treated as zero
+        self.motor_deadzone_threshold = 15  # Motor values below ±15 (out of 255) are set to 0
+
         if mode == 'production':
             logger.info(f"🕐 Socket rate limiting enabled: max {1/self.socket_send_interval:.0f} Hz ({self.socket_send_interval*1000:.0f}ms intervals)")
+            logger.info(f"🎛️  Motor smoothing enabled: factor={self.smoothing_factor}, min_change={self.min_speed_change}")
+            logger.info(f"⚡ Motor deadzone enabled: values below ±{self.motor_deadzone_threshold} treated as zero")
 
         # Threading
         self.update_thread: Optional[threading.Thread] = None
@@ -417,7 +428,10 @@ class RemoteControlService:
         motor_speeds = self.mecanum_calc.calculate_motor_speeds(forward, strafe, rotation)
 
         # Apply speed modifier
-        new_motor_speeds = motor_speeds.scale(speed_modifier)
+        target_motor_speeds = motor_speeds.scale(speed_modifier)
+
+        # Apply smoothing to reduce vibrations
+        new_motor_speeds = self._smooth_motor_speeds(target_motor_speeds)
 
         # Log significant changes at DATA level
         if self._motor_speeds_changed(new_motor_speeds):
@@ -435,6 +449,7 @@ class RemoteControlService:
         # Update motor speeds
         self.previous_motor_speeds = self.current_motor_speeds
         self.current_motor_speeds = new_motor_speeds
+        self.target_motor_speeds = target_motor_speeds  # Store target for reference
 
         # Mark that we have new data to send (rate-limited sending)
         if self.mode == 'production':
@@ -464,6 +479,16 @@ class RemoteControlService:
             right_front = int(self.current_motor_speeds.right_front * 255)
             right_rear = int(self.current_motor_speeds.right_rear * 255)
 
+            # Apply motor deadzone to prevent ineffective low values
+            left_front, left_rear, right_front, right_rear = self._apply_motor_deadzone(
+                left_front, left_rear, right_front, right_rear
+            )
+
+            # Check if all motors are zero after deadzone - if so, don't send (let keepalive handle it)
+            if left_front == 0 and left_rear == 0 and right_front == 0 and right_rear == 0:
+                logger.debug("🤖 All motors zero after deadzone - skipping command (keepalive will maintain connection)")
+                return
+
             # Log the mecanum command being sent at DATA level
             logger.data(f"🤖 Mecanum command: LF={left_front}, LR={left_rear}, RF={right_front}, RR={right_rear}")
 
@@ -473,6 +498,11 @@ class RemoteControlService:
         else:  # TANK mode
             # Convert motor speeds to tank command
             command, value = self.mecanum_calc.convert_to_multiplexer_command(self.current_motor_speeds)
+
+            # Skip sending STOP commands - let keepalive handle idle state
+            if command == "STOP":
+                logger.debug("🚗 Tank command is STOP - skipping command (keepalive will maintain connection)")
+                return
 
             # Log the tank command being sent at DATA level
             logger.data(f"🚗 Tank command: {command}:{value}")
@@ -495,19 +525,53 @@ class RemoteControlService:
                 abs(new_speeds.right_rear - self.current_motor_speeds.right_rear) > threshold)
 
     def _should_send_command(self, new_speeds: MotorSpeeds) -> bool:
-        """Check if we should send a command (non-zero or significant change)"""
-        # Always send if any motor speed is non-zero (robot is moving)
+        """Check if we should send a command (only send if robot is actually moving)"""
+        # Only send if any motor speed is non-zero (robot is moving)
         if (abs(new_speeds.left_front) > 0.01 or abs(new_speeds.left_rear) > 0.01 or
             abs(new_speeds.right_front) > 0.01 or abs(new_speeds.right_rear) > 0.01):
             return True
 
-        # Send stop command only if we were previously moving
-        if (abs(self.current_motor_speeds.left_front) > 0.01 or abs(self.current_motor_speeds.left_rear) > 0.01 or
-            abs(self.current_motor_speeds.right_front) > 0.01 or abs(self.current_motor_speeds.right_rear) > 0.01):
-            return True
-
-        # Don't send if already stopped
+        # Don't send zero commands - let keepalive handle idle state
         return False
+
+    def _smooth_motor_speeds(self, target_speeds: MotorSpeeds) -> MotorSpeeds:
+        """Apply smoothing to motor speeds to reduce vibrations and abrupt changes"""
+        if not self.smoothing_enabled:
+            return target_speeds
+
+        # Apply exponential smoothing (low-pass filter)
+        # new_speed = current_speed + smoothing_factor * (target_speed - current_speed)
+
+        def smooth_value(current: float, target: float) -> float:
+            # If the change is very small, don't update (reduces micro-movements)
+            if abs(target - current) < self.min_speed_change:
+                return current
+
+            # Apply smoothing
+            return current + self.smoothing_factor * (target - current)
+
+        smoothed_speeds = MotorSpeeds(
+            left_front=smooth_value(self.current_motor_speeds.left_front, target_speeds.left_front),
+            left_rear=smooth_value(self.current_motor_speeds.left_rear, target_speeds.left_rear),
+            right_front=smooth_value(self.current_motor_speeds.right_front, target_speeds.right_front),
+            right_rear=smooth_value(self.current_motor_speeds.right_rear, target_speeds.right_rear)
+        )
+
+        return smoothed_speeds
+
+    def _apply_motor_deadzone(self, left_front: int, left_rear: int, right_front: int, right_rear: int) -> tuple:
+        """Apply motor deadzone - set values below threshold to zero"""
+        def apply_deadzone(value: int) -> int:
+            if abs(value) < self.motor_deadzone_threshold:
+                return 0
+            return value
+
+        return (
+            apply_deadzone(left_front),
+            apply_deadzone(left_rear),
+            apply_deadzone(right_front),
+            apply_deadzone(right_rear)
+        )
 
     def _on_button_press(self, button: ControllerButton):
         """Handle controller button press events"""
@@ -546,6 +610,20 @@ class RemoteControlService:
             # Boost mode
             self.boost_mode = True
             logger.info("🚀 Boost mode activated")
+
+        elif button == ControllerButton.CREATE:
+            # Toggle motor smoothing
+            self.smoothing_enabled = not self.smoothing_enabled
+            status = "enabled" if self.smoothing_enabled else "disabled"
+            logger.info(f"🎛️  Motor smoothing {status}")
+
+        elif button == ControllerButton.TOUCHPAD:
+            # Cycle motor deadzone threshold (0, 10, 15, 20, 25)
+            thresholds = [0, 10, 15, 20, 25]
+            current_index = thresholds.index(self.motor_deadzone_threshold) if self.motor_deadzone_threshold in thresholds else 2
+            next_index = (current_index + 1) % len(thresholds)
+            self.motor_deadzone_threshold = thresholds[next_index]
+            logger.info(f"⚡ Motor deadzone threshold: ±{self.motor_deadzone_threshold}")
 
     def _on_button_release(self, button: ControllerButton):
         """Handle controller button release events"""

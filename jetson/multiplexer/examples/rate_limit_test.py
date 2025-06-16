@@ -339,7 +339,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Rate Limiting Test for Motor Controller')
-    parser.add_argument('--socket-path', default='/tmp/motor-proxy/motor_controller.sock',
+    parser.add_argument('--socket-path', default='/var/eraccoon/multiplexer/socket/motor_proxy_service.sock',
                        help='Unix socket path')
     parser.add_argument('--test', choices=['rate', 'keepalive', 'both'], default='both',
                        help='Test type to run')

@@ -120,7 +120,7 @@ show_status() {
         fi
         echo ""
         echo "🔌 Socket Status (Production Mode):"
-        if ssh $USERNAME@$JETSON_IP "test -S /tmp/motor-proxy/motor_controller.sock"; then
+        if ssh $USERNAME@$JETSON_IP "test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock"; then
             echo "   ✅ Motor controller socket exists"
         else
             echo "   ❌ Motor controller socket not found"
@@ -219,11 +219,11 @@ case $ACTION in
                     --health-timeout=10s \\
                     --health-retries=3 \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -v /var/log/remote-control:/var/log/remote-control \\
                     -e LOG_LEVEL=INFO \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level INFO"
+                    python main.py --mode production --socket-path /var/eraccoon/multiplexer/socket/motor_proxy_service.sock --log-level INFO"
                 ;;
             "debug")
                 echo "🐛 Deploying with debug configuration..."
@@ -237,11 +237,11 @@ case $ACTION in
                     --health-timeout=10s \\
                     --health-retries=3 \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -v /var/log/remote-control:/var/log/remote-control \\
                     -e LOG_LEVEL=DEBUG \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level DEBUG"
+                    python main.py --mode production --socket-path /var/eraccoon/multiplexer/socket/motor_proxy_service.sock --log-level DEBUG"
                 ;;
             "data")
                 echo "🔄 Deploying with data mode configuration..."
@@ -255,11 +255,11 @@ case $ACTION in
                     --health-timeout=10s \\
                     --health-retries=3 \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -v /var/log/remote-control:/var/log/remote-control \\
                     -e LOG_LEVEL=DATA \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level DATA"
+                    python main.py --mode production --socket-path /var/eraccoon/multiplexer/socket/motor_proxy_service.sock --log-level DATA"
                 ;;
             "secure")
                 echo "🔐 Deploying with secure configuration..."
@@ -270,10 +270,10 @@ case $ACTION in
                     --device=/dev/input/js1:/dev/input/js1 \\
                     --device=/dev/input/event0:/dev/input/event0 \\
                     --device=/dev/input/event1:/dev/input/event1 \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -e CONTROLLER_DEVICE=/dev/input/js0 \\
                     $IMAGE_TAG \\
-                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --controller-device /dev/input/js0"
+                    python main.py --mode production --socket-path /var/eraccoon/multiplexer/socket/motor_proxy_service.sock --controller-device /dev/input/js0"
                 ;;
             *)
                 echo "❌ Unknown deployment type: $DEPLOY_TYPE"

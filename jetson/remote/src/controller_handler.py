@@ -82,8 +82,8 @@ class ControllerHandler:
         self.is_macos = platform.system() == "Darwin"
         self.is_linux = platform.system() == "Linux"
 
-        # Deadzone for analog sticks (to handle controller drift)
-        self.deadzone = 0.1
+        # Deadzone for analog sticks (to handle controller drift and reduce micro-movements)
+        self.deadzone = 0.15  # Increased from 0.1 to reduce vibrations
 
         # Callbacks
         self.on_button_press: Optional[Callable[[ControllerButton], None]] = None

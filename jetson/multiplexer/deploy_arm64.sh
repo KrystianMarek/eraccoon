@@ -117,7 +117,7 @@ clean_all() {
     done
 
     echo "🧹 Cleaning up socket files..."
-    ssh $USERNAME@$JETSON_IP "rm -rf /tmp/motor-proxy/*sock" || true
+    ssh $USERNAME@$JETSON_IP "rm -rf /var/eraccoon/multiplexer/socket/*sock" || true
 
     echo "✅ Cleanup completed"
 }
@@ -132,8 +132,8 @@ show_status() {
         ssh $USERNAME@$JETSON_IP "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}' $CONTAINER_NAME" 2>/dev/null || echo "   Container not running"
         echo ""
         echo "🔌 Socket Status:"
-        if ssh $USERNAME@$JETSON_IP "test -S /tmp/motor-proxy/motor_controller.sock"; then
-            echo "   ✅ Socket exists at /tmp/motor-proxy/motor_controller.sock"
+        if ssh $USERNAME@$JETSON_IP "test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock"; then
+            echo "   ✅ Socket exists at /var/eraccoon/multiplexer/socket/motor_proxy_service.sock"
         else
             echo "   ❌ Socket not found"
         fi
@@ -215,27 +215,28 @@ case $ACTION in
         case $DEPLOY_TYPE in
             "quick")
                 echo "🚀 Deploying with quick start configuration..."
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/eraccoon/multiplexer/socket"
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     $IMAGE_TAG"
                 ;;
             "production")
                 echo "🏭 Deploying with production configuration..."
-                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/motor-proxy"
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/motor-proxy /var/eraccoon/multiplexer/socket"
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
-                    --health-cmd='test -S /tmp/motor-proxy/motor_controller.sock' \\
+                    --health-cmd='test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock' \\
                     --health-interval=30s \\
                     --health-timeout=10s \\
                     --health-retries=3 \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -v /var/log/motor-proxy:/var/log/motor-proxy \\
                     -e LOG_LEVEL=INFO \\
                     -e LOG_FILE=/var/log/motor-proxy/motor-proxy.log \\
@@ -243,17 +244,17 @@ case $ACTION in
                 ;;
             "debug")
                 echo "🐛 Deploying with debug configuration..."
-                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/motor-proxy"
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/log/motor-proxy /var/eraccoon/multiplexer/socket"
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --privileged \\
-                    --health-cmd='test -S /tmp/motor-proxy/motor_controller.sock' \\
+                    --health-cmd='test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock' \\
                     --health-interval=30s \\
                     --health-timeout=10s \\
                     --health-retries=3 \\
                     -v /dev:/dev \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -v /var/log/motor-proxy:/var/log/motor-proxy \\
                     -e LOG_LEVEL=DEBUG \\
                     -e LOG_FILE=/var/log/motor-proxy/motor-proxy-debug.log \\
@@ -261,13 +262,14 @@ case $ACTION in
                 ;;
             "secure")
                 echo "🔐 Deploying with secure configuration..."
+                ssh $USERNAME@$JETSON_IP "mkdir -p /var/eraccoon/multiplexer/socket"
                 ssh $USERNAME@$JETSON_IP "docker run -d \\
                     --name $CONTAINER_NAME \\
                     --restart unless-stopped \\
                     --device=/dev/ttyACM0:/dev/ttyACM0 \\
                     --device=/dev/ttyACM1:/dev/ttyACM1 \\
                     --device=/dev/ttyUSB0:/dev/ttyUSB0 \\
-                    -v /tmp/motor-proxy:/tmp/motor-proxy \\
+                    -v /var/eraccoon:/var/eraccoon \\
                     -e SERIAL_PORT=/dev/ttyACM0 \\
                     $IMAGE_TAG"
                 ;;
@@ -288,12 +290,12 @@ case $ACTION in
 
         # Test socket creation
         echo "🔌 Testing socket creation..."
-        if ssh $USERNAME@$JETSON_IP "test -S /tmp/motor-proxy/motor_controller.sock"; then
+        if ssh $USERNAME@$JETSON_IP "test -S /var/eraccoon/multiplexer/socket/motor_proxy_service.sock"; then
             echo "✅ Socket created successfully!"
 
             # Run quick test
             echo "🧪 Running connection test..."
-            ssh $USERNAME@$JETSON_IP "timeout 10 docker exec $CONTAINER_NAME python examples/client_example.py auto || echo 'Test completed (timeout expected)'"
+            ssh $USERNAME@$JETSON_IP "timeout 10 docker exec $CONTAINER_NAME python examples/client_example.py --mode demo || echo 'Test completed (timeout expected)'"
         else
             echo "❌ Socket not found! Check logs:"
             ssh $USERNAME@$JETSON_IP "docker logs $CONTAINER_NAME"

@@ -15,6 +15,8 @@ from typing import Dict, Any, Optional, Callable
 
 logger = logging.getLogger(__name__)
 
+UNIX_SOCKET_PATH = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'
+
 
 class SocketClient:
     """
@@ -24,7 +26,7 @@ class SocketClient:
     for sending movement commands and receiving status updates.
     """
 
-    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock'):
+    def __init__(self, socket_path: str = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'):
         self.socket_path = socket_path
         self.sock: Optional[socket.socket] = None
         self.connected = False

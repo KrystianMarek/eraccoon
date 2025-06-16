@@ -28,7 +28,7 @@ from typing import Optional, Dict, Any
 class MecanumClient:
     """Client for controlling robot with mecanum wheels"""
 
-    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock'):
+    def __init__(self, socket_path: str = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'):
         self.socket_path = socket_path
         self.sock: Optional[socket.socket] = None
         self.connected = False

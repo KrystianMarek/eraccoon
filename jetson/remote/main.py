@@ -26,6 +26,8 @@ from src.remote_control_service import RemoteControlService
 DATA_LOG_LEVEL = 15
 logging.addLevelName(DATA_LOG_LEVEL, 'DATA')
 
+UNIX_SOCKET_PATH = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'
+
 def data_log(self, message, *args, **kwargs):
     """Log at DATA level (15) - between INFO and DEBUG"""
     if self.isEnabledFor(DATA_LOG_LEVEL):
@@ -76,7 +78,7 @@ Examples:
   python main.py --mode development
 
   # Production mode (with socket communication)
-  python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock
+  python main.py --mode production --socket-path /var/eraccoon/motor_proxy_service.sock
 
   # Specify custom controller device
   python main.py --mode development --controller-device /dev/input/js1
@@ -101,8 +103,8 @@ Examples:
 
     parser.add_argument(
         '--socket-path',
-        default='/tmp/motor-proxy/motor_controller.sock',
-        help='Unix socket path for production mode (default: /tmp/motor-proxy/motor_controller.sock)'
+        default=UNIX_SOCKET_PATH,
+        help=f'Unix socket path for production mode (default: {UNIX_SOCKET_PATH})'
     )
 
     parser.add_argument(

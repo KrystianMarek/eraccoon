@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 from src.unix_socket_server import MotorProxyServer
 from src import __version__, get_build_info
 
+UNIX_SOCKET_PATH = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'
+
 
 def setup_logging(log_level: str = 'INFO', log_file: str = None):
     """Configure logging"""
@@ -96,8 +98,8 @@ Examples:
 
     parser.add_argument(
         '--socket-path',
-        default='/tmp/motor-proxy/motor_controller.sock',
-        help='Unix socket path (default: /tmp/motor-proxy/motor_controller.sock)'
+        default=UNIX_SOCKET_PATH,
+        help=f'Unix socket path (default: {UNIX_SOCKET_PATH})'
     )
 
     parser.add_argument(

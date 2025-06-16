@@ -29,8 +29,8 @@ COPY src/ ./src/
 COPY main.py .
 
 # Create necessary directories and set permissions
-RUN mkdir -p /var/log/motor-proxy /tmp/motor-proxy && \
-    chown -R motor:motor /app /var/log/motor-proxy /tmp/motor-proxy
+RUN mkdir -p /var/log/motor-proxy /var/eraccoon/multiplexer/socket && \
+    chown -R motor:motor /app /var/log/motor-proxy /var/eraccoon
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
@@ -106,12 +106,12 @@ wait "$child"\n' > /app/entrypoint.sh && \
 USER motor
 
 # Expose volume for socket file
-VOLUME ["/tmp/motor-proxy"]
+VOLUME ["/var/eraccoon"]
 
 # Environment variables with defaults
 ENV SERIAL_PORT=""
 ENV BAUD_RATE=115200
-ENV SOCKET_PATH=/tmp/motor-proxy/motor_controller.sock
+ENV SOCKET_PATH=/var/eraccoon/multiplexer/socket/motor_proxy_service.sock
 ENV LOG_LEVEL=INFO
 ENV LOG_FILE=""
 ENV DAEMON_MODE=false

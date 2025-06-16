@@ -28,7 +28,7 @@ from typing import Optional
 class MotorControllerClient:
     """Client for communicating with the Motor Controller Proxy Service"""
 
-    def __init__(self, socket_path: str = '/tmp/motor-proxy/motor_controller.sock',
+    def __init__(self, socket_path: str = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock',
                  client_name: str = 'ExampleClient'):
         self.socket_path = socket_path
         self.client_name = client_name
@@ -311,7 +311,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Motor Controller Client Example')
-    parser.add_argument('--socket-path', default='/tmp/motor-proxy/motor_controller.sock',
+    parser.add_argument('--socket-path', default='/var/eraccoon/multiplexer/socket/motor_proxy_service.sock',
                        help='Unix socket path')
     parser.add_argument('--name', default='ExampleClient',
                        help='Client name to identify as')

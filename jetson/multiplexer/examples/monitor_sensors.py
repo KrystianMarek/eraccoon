@@ -8,7 +8,7 @@ import json
 import sys
 
 def monitor_sensors():
-    socket_path = '/tmp/motor-proxy/motor_controller.sock'
+    socket_path = '/var/eraccoon/multiplexer/socket/motor_proxy_service.sock'
 
     try:
         # Connect to Unix socket
