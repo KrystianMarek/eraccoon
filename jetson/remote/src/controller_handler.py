@@ -369,11 +369,11 @@ class ControllerHandler:
             return (0.0, 0.0, 0.0)
 
         # Use left stick for movement (forward/backward, strafe)
-        forward_backward = -self.controller_state.left_stick_y  # Invert Y axis
-        strafe_left_right = self.controller_state.left_stick_x
+        forward_backward = -self.controller_state.left_stick_y  # Invert Y axis (up = forward)
+        strafe_left_right = -self.controller_state.left_stick_x  # Invert X axis (left = negative)
 
-        # Use right stick X for rotation
-        rotation = self.controller_state.right_stick_x
+        # Use right stick X for rotation (no inversion needed - mecanum formula handles it correctly)
+        rotation = self.controller_state.right_stick_x  # Right = positive (clockwise), Left = negative (counterclockwise)
 
         return (forward_backward, strafe_left_right, rotation)
 

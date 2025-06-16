@@ -164,6 +164,10 @@ class TestClient:
             elif msg_type == 'error':
                 self.errors_received += 1
 
+            elif msg_type in ['keepalive_response', 'keepalive_ignored']:
+                # Track keepalive responses for connection health
+                pass
+
         except json.JSONDecodeError:
             pass
         except Exception:

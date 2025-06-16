@@ -42,6 +42,8 @@ class SocketClient:
         # Keepalive management
         self.keepalive_interval = 2.5  # Send keepalive every 2.5 seconds (server expects every 3s)
         self.last_keepalive_response = time.time()
+        self.last_command_time = 0  # Track when we last sent a motor command
+        self.command_activity_threshold = 2.0  # Consider client idle after 2 seconds without commands
 
         # Callbacks
         self.on_status_update: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -73,6 +75,9 @@ class SocketClient:
                 'type': 'identify',
                 'name': 'RemoteControlService'
             })
+
+            # Initialize command activity tracking
+            self.last_command_time = time.time()
 
             # Wait a moment for welcome and identification response
             time.sleep(0.5)
@@ -163,6 +168,9 @@ class SocketClient:
 
         success = self.send_message(message)
         if success:
+            # Track command activity for intelligent keepalive management
+            self.last_command_time = time.time()
+
             # Log motor commands at DATA level for visibility
             logger.data(f"🚗 Tank command: {command}:{value}")
             logger.debug(f"🚗 Sent tank command: {command}:{value}")
@@ -198,6 +206,9 @@ class SocketClient:
 
         success = self.send_message(message)
         if success:
+            # Track command activity for intelligent keepalive management
+            self.last_command_time = time.time()
+
             # Log motor commands at DATA level for visibility
             logger.data(f"🤖 Mecanum command: LF={left_front}, LR={left_rear}, RF={right_front}, RR={right_rear}")
             logger.debug(f"🤖 Sent mecanum command: LF={left_front}, LR={left_rear}, RF={right_front}, RR={right_rear}")
@@ -284,7 +295,7 @@ class SocketClient:
         return self.send_message({'type': 'keepalive'})
 
     def _keepalive_loop(self):
-        """Background thread to send keepalive messages"""
+        """Background thread to send keepalive messages (intelligent management)"""
         while self.connected and not self._stop_event.is_set():
             try:
                 # Wait for keepalive interval or stop event
@@ -292,11 +303,19 @@ class SocketClient:
                     break  # Stop event was set
 
                 if self.connected:
-                    if self.send_keepalive():
-                        logger.debug("💓 Keepalive sent")
+                    current_time = time.time()
+                    time_since_last_command = current_time - self.last_command_time
+
+                    # Only send keepalive if client has been idle for more than threshold
+                    if time_since_last_command > self.command_activity_threshold:
+                        if self.send_keepalive():
+                            logger.debug("💓 Keepalive sent (client idle)")
+                        else:
+                            logger.warning("❌ Failed to send keepalive")
+                            break
                     else:
-                        logger.warning("❌ Failed to send keepalive")
-                        break
+                        # Client is active, motor commands act as keepalives
+                        logger.debug(f"💓 Keepalive skipped (client active, last command {time_since_last_command:.1f}s ago)")
 
             except Exception as e:
                 logger.error(f"❌ Keepalive error: {e}")
@@ -363,6 +382,11 @@ class SocketClient:
             elif msg_type == 'keepalive_response':
                 self.last_keepalive_response = time.time()
                 logger.debug("💓 Keepalive acknowledged")
+
+            elif msg_type == 'keepalive_ignored':
+                self.last_keepalive_response = time.time()
+                reason = data.get('reason', 'unknown')
+                logger.debug(f"💓 Keepalive ignored ({reason}) - client is active")
 
             elif msg_type == 'status':
                 self._handle_status_message(data)

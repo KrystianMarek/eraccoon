@@ -4,6 +4,18 @@ Mecanum Client Example
 
 Demonstrates the new mecanum wheel control capabilities of the motor controller
 proxy service. Shows both tank-style and direct mecanum motor control.
+
+Features:
+- Tank-style commands (traditional robot control)
+- Mecanum-specific commands (strafing, diagonal movement, rotation)
+- Intelligent keepalive management (motor commands act as implicit keepalives)
+- Real-time sensor data monitoring
+- Interactive control mode
+
+Intelligent Keepalive System:
+- Motor commands automatically act as keepalives
+- Explicit keepalives are ignored during active control
+- Connection maintained as long as either keepalives OR motor commands are sent
 """
 
 import socket
@@ -22,6 +34,11 @@ class MecanumClient:
         self.connected = False
         self.running = False
         self.listen_thread: Optional[threading.Thread] = None
+        self.keepalive_thread: Optional[threading.Thread] = None
+
+        # Keepalive management
+        self.keepalive_interval = 2.5  # Send keepalive every 2.5 seconds
+        self.last_keepalive_response = time.time()
 
     def connect(self) -> bool:
         """Connect to the motor proxy service"""
@@ -34,6 +51,16 @@ class MecanumClient:
             self.running = True
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
             self.listen_thread.start()
+
+            # Send identification
+            self.send_command({
+                'type': 'identify',
+                'name': 'MecanumClient'
+            })
+
+            # Start keepalive thread
+            self.keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+            self.keepalive_thread.start()
 
             print(f"✅ Connected to motor proxy at {self.socket_path}")
             return True
@@ -114,6 +141,24 @@ class MecanumClient:
             clients = response.get('total_clients', 0)
             print(f"📊 Status: Arduino {'✅' if arduino_connected else '❌'} "
                   f"on {port}, {clients} clients")
+
+        elif msg_type == 'welcome':
+            client_id = response.get('client_id')
+            print(f"🎉 Welcome! Client ID: {client_id}")
+
+        elif msg_type == 'identify_response':
+            unique_name = response.get('unique_name')
+            claimed_name = response.get('claimed_name')
+            print(f"🏷️  Identified as {unique_name} (claimed: {claimed_name})")
+
+        elif msg_type == 'keepalive_response':
+            self.last_keepalive_response = time.time()
+            print("💓 Keepalive acknowledged")
+
+        elif msg_type == 'keepalive_ignored':
+            self.last_keepalive_response = time.time()
+            reason = response.get('reason', 'unknown')
+            print(f"💓 Keepalive ignored ({reason}) - client is active")
 
     def send_command(self, command: Dict[str, Any]) -> bool:
         """Send a command to the service"""
@@ -282,6 +327,22 @@ class MecanumClient:
     def get_status(self):
         """Get service status"""
         return self.send_command({'type': 'get_status'})
+
+    def _keepalive_loop(self):
+        """Send periodic keepalive messages"""
+        while self.running:
+            try:
+                self.send_command({'type': 'keepalive'})
+                time.sleep(self.keepalive_interval)
+
+                # Check if we're getting keepalive responses
+                if time.time() - self.last_keepalive_response > 10:
+                    print("⚠️  Warning: No keepalive response for 10 seconds")
+
+            except Exception as e:
+                if self.running:
+                    print(f"❌ Keepalive error: {e}")
+                break
 
 
 def demo_tank_commands(client: MecanumClient):

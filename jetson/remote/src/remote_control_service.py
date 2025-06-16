@@ -401,12 +401,10 @@ class RemoteControlService:
 
         # Apply drive mode restrictions
         if self.drive_mode == DriveMode.TANK:
-            # Tank mode: only use left stick (forward/backward), ignore strafe and right stick rotation
-            # Use left stick X for rotation instead of right stick
-            left_stick_x = self.controller.get_state().left_stick_x
+            # Tank mode: only use left stick for forward/backward, right stick X for rotation
             forward = forward  # Keep forward/backward from left stick Y
             strafe = 0.0      # No strafing in tank mode
-            rotation = left_stick_x  # Use left stick X for rotation
+            rotation = self.controller.get_state().right_stick_x  # Use right stick X for rotation directly
 
         # Apply speed modifier
         speed_modifier = self.controller.get_speed_modifier()
@@ -530,8 +528,8 @@ class RemoteControlService:
             if self.mode == 'development':
                 self._test_movement_patterns()
 
-        elif button == ControllerButton.OPTIONS:
-            # Switch drive mode (button physically labeled L1 on your controller)
+        elif button == ControllerButton.L1:
+            # Switch drive mode (L1 button)
             if self.drive_mode == DriveMode.MECANUM:
                 self.drive_mode = DriveMode.TANK
                 logger.info("🚗 Switched to TANK drive mode")
@@ -539,8 +537,8 @@ class RemoteControlService:
                 self.drive_mode = DriveMode.MECANUM
                 logger.info("🤖 Switched to MECANUM drive mode")
 
-        elif button == ControllerButton.L1:
-            # Precision mode (restored to L1)
+        elif button == ControllerButton.OPTIONS:
+            # Precision mode (moved from L1)
             self.precision_mode = True
             logger.info("🎯 Precision mode activated")
 
@@ -553,7 +551,7 @@ class RemoteControlService:
         """Handle controller button release events"""
         logger.debug(f"Button released: {button.name}")
 
-        if button == ControllerButton.L1:
+        if button == ControllerButton.OPTIONS:
             self.precision_mode = False
             logger.info("🎯 Precision mode deactivated")
 

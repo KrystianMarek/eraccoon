@@ -100,11 +100,13 @@ class MecanumCalculator:
         # Forward/Backward: All wheels same direction
         # Left/Right strafe: Diagonal wheels together
         # Rotation: Left side opposite to right side
+        # For counterclockwise rotation (negative): left wheels negative, right wheels positive
+        # For clockwise rotation (positive): left wheels positive, right wheels negative
 
-        left_front = forward - strafe - rotation
-        left_rear = forward + strafe - rotation
-        right_front = forward + strafe + rotation
-        right_rear = forward - strafe + rotation
+        left_front = forward - strafe + rotation
+        left_rear = forward + strafe + rotation
+        right_front = forward + strafe - rotation
+        right_rear = forward - strafe - rotation
 
         motor_speeds = MotorSpeeds(
             left_front=left_front,

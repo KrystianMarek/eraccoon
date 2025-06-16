@@ -4,10 +4,17 @@ Example client for the Motor Controller Proxy Service
 
 This example demonstrates:
 - Connecting to the multiplexer service
-- Client identification and keepalive management
+- Client identification and intelligent keepalive management
 - Sending tank and mecanum commands
-- Receiving sensor data
+- Receiving sensor data and command responses
 - Proper cleanup and error handling
+
+Intelligent Keepalive System:
+- Motor commands automatically act as keepalives
+- Explicit keepalives are ignored during active control (>2s since last command)
+- Server responds with 'keepalive_response' for idle clients
+- Server responds with 'keepalive_ignored' for active clients
+- Connection maintained as long as either keepalives OR motor commands are sent
 """
 
 import json
@@ -164,6 +171,11 @@ class MotorControllerClient:
             elif msg_type == 'keepalive_response':
                 self.last_keepalive_response = time.time()
                 print("💓 Keepalive acknowledged")
+
+            elif msg_type == 'keepalive_ignored':
+                self.last_keepalive_response = time.time()
+                reason = data.get('reason', 'unknown')
+                print(f"💓 Keepalive ignored ({reason}) - client is active")
 
             elif msg_type == 'sensor_data':
                 # Print sensor data (abbreviated for readability)
