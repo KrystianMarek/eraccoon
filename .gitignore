@@ -1,0 +1,8 @@
+.idea
+.vscode
+.secret
+external
+.DS_Store
+cmake-build-debug
+.venv
+*.tar

@@ -1,0 +1,60 @@
+//
+// Created by Krystian Marek on 13/10/2024.
+//
+
+#ifndef JOYRIDE_H
+#define JOYRIDE_H
+
+#include <Arduino.h>
+#include <CytronMotorDriver.h>
+#include <DistanceSensors.h>
+#include <Ticker.h>
+
+struct JoyState {
+    bool forward;
+    bool backward;
+    bool left;
+    bool right;
+    int speed;
+};
+
+class JoyRide {
+public:
+    JoyRide(
+        int pin_forward,
+        int pin_backward,
+        int pin_left,
+        int pin_right,
+        int acc_time,
+        int max_speed,
+        CytronMD *motor_fl,
+        CytronMD *motor_fr,
+        CytronMD *motor_rl,
+        CytronMD *motor_rr
+        );
+
+    void ride(bool padLock, DistanceSensors *distance_sensors);
+private:
+    int pin_forward;
+    int pin_backward;
+    int pin_left;
+    int pin_right;
+    int acc_time;
+    int max_speed;
+    int speed;
+    CytronMD *motor_fl;
+    CytronMD *motor_fr;
+    CytronMD *motor_rl;
+    CytronMD *motor_rr;
+
+    long elapsedMillis;
+    Ticker *ticker;
+
+    void _ride(JoyState joyState, DistanceSensors *distance_sensors);
+    JoyState _calculateSpeed();
+    JoyState _setSpeed();
+};
+
+
+
+#endif //JOYRIDE_H
