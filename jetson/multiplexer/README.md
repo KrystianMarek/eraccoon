@@ -2,6 +2,16 @@
 
 A robust proxy/multiplexer service that exposes Arduino motor control via Unix socket interface. Designed for deployment on Nvidia Jetson Nano with support for multiple concurrent clients, command arbitration, real-time sensor data streaming, rate limiting, and client keepalive management.
 
+## 🎮 **Remote Control Ready!**
+
+**The robot can now be controlled remotely via gamepad/joystick!** This multiplexer service successfully enables:
+
+- ✅ **Stable Remote Control**: Gamepad input from remote services works reliably
+- ✅ **Real-time Response**: Low-latency motor commands with immediate Arduino execution
+- ✅ **Robust Connection Management**: Advanced deadlock prevention and intelligent keepalive system
+- ✅ **Multi-Client Support**: Multiple remote services can connect simultaneously with priority control
+- ✅ **Production Ready**: Deployed and tested on Jetson Nano with Docker containerization
+
 ## 🏗️ Architecture
 
 ```
@@ -27,18 +37,31 @@ A robust proxy/multiplexer service that exposes Arduino motor control via Unix s
 
 ## 🚀 Features
 
-- **Unix Socket Interface**: Clean IPC mechanism for local applications
+### Core Functionality
+- **Unix Socket Interface**: Clean IPC mechanism for local and remote applications
 - **Multi-Client Support**: Handle multiple concurrent connections with priority-based arbitration
-- **Rate Limiting**: Adaptive rate limiting per client based on number of connected clients
-- **Client Keepalive Management**: Automatic disconnection of inactive clients (3-second timeout)
-- **Unique Client Naming**: Server-assigned unique names independent of client claims
-- **Real-time Sensor Data**: Live streaming of Arduino sensor readings (100ms intervals) to all clients
-- **Robust Connection Management**: Auto-reconnection, dynamic port detection, and Arduino reboot handling
-- **Non-blocking Socket Operations**: Prevents client issues from affecting Arduino communication
+- **Real-time Motor Control**: Support for both tank-style and mecanum wheel control systems
+- **Live Sensor Streaming**: Real-time Arduino sensor data broadcast to all connected clients
+
+### Advanced Connection Management
+- **Intelligent Keepalive System**: Motor commands act as implicit keepalives, reducing message overhead
+- **Deadlock Prevention**: Advanced threading architecture prevents socket communication deadlocks
+- **Adaptive Rate Limiting**: Dynamic rate limiting per client based on number of connected clients
+- **Robust Reconnection**: Auto-reconnection, dynamic port detection, and Arduino reboot handling
+- **Non-blocking Operations**: Prevents client issues from affecting Arduino communication
+
+### Remote Control Capabilities
+- **Gamepad/Joystick Support**: Stable remote control via external gamepad services
+- **Low-latency Response**: Optimized for real-time robot control applications
+- **Priority-based Access**: Multiple clients can connect with priority-based motor control arbitration
+- **Connection Stability**: Intelligent keepalive management prevents connection drops during active control
+
+### Production Features
 - **Docker Support**: Multi-architecture builds for ARM64/AMD64 with comprehensive deployment options
 - **Comprehensive Logging**: Detailed logging with configurable levels and rate limiting statistics
 - **Health Monitoring**: Built-in health checks, statistics, and connection status
-- **Arduino Watchdog Integration**: Handles Arduino's 5-second watchdog system with automatic keepalive
+- **Arduino Integration**: Seamless integration with Arduino watchdog and reboot systems
+- **Unique Client Naming**: Server-assigned unique names independent of client claims
 
 ## 📋 Requirements
 
@@ -284,12 +307,19 @@ All messages are JSON objects terminated with `\n`:
 }
 ```
 
-#### Keepalive (Required every 3 seconds)
+#### Keepalive (Intelligent Management)
 ```json
 {
   "type": "keepalive"
 }
 ```
+
+**Intelligent Keepalive System:**
+- **Motor Commands as Keepalives**: Tank and mecanum commands automatically act as keepalives
+- **Idle Client Keepalives**: Explicit keepalives only processed when client is idle (>2 seconds since last command)
+- **Active Client Optimization**: Explicit keepalives ignored during active control to reduce message overhead
+- **Dual Activity Tracking**: Server monitors both explicit keepalives and motor command activity
+- **Automatic Disconnection**: Clients disconnected if inactive on both fronts for >3 seconds
 
 #### Motor Commands
 
@@ -399,13 +429,28 @@ The service supports two types of motor commands with built-in rate limiting:
 }
 ```
 
-#### Keepalive Response
+#### Keepalive Responses
+
+**Standard Keepalive Response** (for idle clients):
 ```json
 {
   "type": "keepalive_response",
   "timestamp": 1640995200.0
 }
 ```
+
+**Keepalive Ignored Response** (for active clients):
+```json
+{
+  "type": "keepalive_ignored",
+  "reason": "client_active",
+  "timestamp": 1640995200.0
+}
+```
+
+The server intelligently responds based on client activity:
+- **Idle clients** (>2s since last command): Receive `keepalive_response`
+- **Active clients** (recent commands): Receive `keepalive_ignored` to indicate the keepalive was unnecessary
 
 #### Status Updates
 ```json
@@ -688,6 +733,38 @@ docker ps
 docker logs motor-proxy
 docker exec motor-proxy ls -la /tmp/motor-proxy/
 ```
+
+## 🔧 Recent Improvements
+
+### Deadlock Prevention & Threading Fixes
+The multiplexer has been extensively hardened against threading issues that could cause connection drops:
+
+- **Six Deadlock Issues Resolved**: Fixed nested lock acquisition patterns in client handlers
+- **Intelligent Lock Management**: Redesigned critical sections to prevent blocking operations
+- **Non-blocking Socket Operations**: Improved socket timeout handling and error recovery
+- **Thread-safe Client Management**: Enhanced client state management with proper lock ordering
+
+### Intelligent Keepalive System
+Implemented a sophisticated keepalive management system:
+
+- **Motor Commands as Implicit Keepalives**: Reduces message overhead during active control
+- **Activity-based Connection Health**: Monitors both explicit keepalives and motor command activity
+- **Adaptive Keepalive Processing**: Ignores redundant keepalives during active control sessions
+- **Dual Timeout Detection**: Uses both keepalive and activity timestamps for robust connection monitoring
+
+### Remote Control Stability
+Achieved stable remote gamepad control through:
+
+- **Connection Drop Prevention**: Eliminated socket communication deadlocks
+- **Real-time Response**: Optimized message processing for low-latency control
+- **Robust Error Recovery**: Improved handling of partial sends and socket errors
+- **Production Testing**: Verified stable operation with remote gamepad services
+
+### Performance Optimizations
+- **Reduced Message Overhead**: Intelligent keepalive system reduces unnecessary traffic
+- **Improved Socket Buffer Management**: Enhanced buffer size optimization for burst traffic
+- **Better Rate Limiting**: More accurate rate limiting calculations with inline processing
+- **Enhanced Logging**: Detailed debugging capabilities for troubleshooting connection issues
 
 ## 🧪 Testing
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Interactive deployment script for arm64 architecture
-# Usage: ./deploy_arm64.sh <jetson-ip> [username] [action] [deployment-type]
+# Usage: ./deploy_arm64.sh <jetson-ip> [username] [action] [deployment-type] [--no-clean]
 
 set -e
 
@@ -12,13 +12,29 @@ DEPLOY_TYPE=${4:-quick}
 IMAGE_FILE="motor-controller-proxy-latest.tar"
 IMAGE_TAG="motor-controller-proxy:latest"
 CONTAINER_NAME="motor-proxy"
+SKIP_CLEANUP=false
+
+# Parse additional flags
+shift 4 2>/dev/null || true
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --no-clean)
+            SKIP_CLEANUP=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            shift
+            ;;
+    esac
+done
 
 # Function to show usage
 show_usage() {
-    echo "Usage: $0 <jetson-ip> [username] [action] [deployment-type]"
+    echo "Usage: $0 <jetson-ip> [username] [action] [deployment-type] [--no-clean]"
     echo ""
     echo "Actions:"
-    echo "  deploy   - Deploy the container (default)"
+    echo "  deploy   - Deploy the container (default, includes automatic cleanup)"
     echo "  stop     - Stop the running container"
     echo "  delete   - Stop and remove the container"
     echo "  clean    - Remove container and clean up images"
@@ -31,13 +47,20 @@ show_usage() {
     echo "  debug      - Debug mode with verbose logging"
     echo "  secure     - Secure setup with specific device access"
     echo ""
+    echo "Options:"
+    echo "  --no-clean - Skip automatic cleanup before deployment"
+    echo ""
     echo "Examples:"
     echo "  $0 192.168.1.100 jetson deploy quick"
+    echo "  $0 192.168.1.100 jetson deploy production --no-clean"
     echo "  $0 192.168.1.100 jetson stop"
     echo "  $0 192.168.1.100 jetson delete"
     echo "  $0 192.168.1.100 jetson clean"
     echo "  $0 192.168.1.100 jetson status"
     echo "  $0 192.168.1.100 jetson logs"
+    echo ""
+    echo "Note: By default, 'deploy' action automatically cleans up existing"
+    echo "      containers and images before deploying. Use --no-clean to skip this."
 }
 
 if [ -z "$JETSON_IP" ]; then
@@ -94,7 +117,7 @@ clean_all() {
     done
 
     echo "🧹 Cleaning up socket files..."
-    ssh $USERNAME@$JETSON_IP "rm -rf /tmp/motor-proxy" || true
+    ssh $USERNAME@$JETSON_IP "rm -rf /tmp/motor-proxy/*sock" || true
 
     echo "✅ Cleanup completed"
 }
@@ -165,22 +188,28 @@ case $ACTION in
             exit 1
         fi
 
+        # Clean up existing deployment first (default behavior)
+        if [ "$SKIP_CLEANUP" = false ]; then
+            echo "🧹 Cleaning up existing deployment..."
+            clean_all
+        else
+            echo "⚠️  Skipping cleanup (--no-clean specified)"
+            echo "🛑 Stopping existing container (if any)..."
+            ssh $USERNAME@$JETSON_IP "docker stop $CONTAINER_NAME 2>/dev/null || true"
+            ssh $USERNAME@$JETSON_IP "docker rm $CONTAINER_NAME 2>/dev/null || true"
+        fi
+
         # Transfer the image file
         echo "📤 Transferring image file..."
         scp $IMAGE_FILE $USERNAME@$JETSON_IP:/tmp/
 
-# Load image on remote host
-echo "📦 Loading image on Jetson Nano..."
-ssh $USERNAME@$JETSON_IP "gunzip -c /tmp/$IMAGE_FILE | docker load"
+        # Load image on remote host
+        echo "📦 Loading image on Jetson Nano..."
+        ssh $USERNAME@$JETSON_IP "gunzip -c /tmp/$IMAGE_FILE | docker load"
 
-# Clean up transfer file
-echo "🧹 Cleaning up transfer file..."
-ssh $USERNAME@$JETSON_IP "rm /tmp/$IMAGE_FILE"
-
-        # Stop existing container if it exists
-        echo "🛑 Stopping existing container (if any)..."
-        ssh $USERNAME@$JETSON_IP "docker stop $CONTAINER_NAME 2>/dev/null || true"
-        ssh $USERNAME@$JETSON_IP "docker rm $CONTAINER_NAME 2>/dev/null || true"
+        # Clean up transfer file
+        echo "🧹 Cleaning up transfer file..."
+        ssh $USERNAME@$JETSON_IP "rm /tmp/$IMAGE_FILE"
 
         # Deploy based on type
         case $DEPLOY_TYPE in

@@ -346,11 +346,14 @@ show_usage() {
     echo "  quick      - Quick start in development mode (default)"
     echo "  production - Production setup with socket communication"
     echo "  debug      - Debug mode with verbose logging"
+    echo "  data       - Data mode with socket communication logging only"
     echo "  secure     - Secure setup with specific device access"
     echo ""
     echo "Examples:"
     echo "  \$0 192.168.1.100 jetson deploy quick"
     echo "  \$0 192.168.1.100 jetson deploy production"
+    echo "  \$0 192.168.1.100 jetson deploy debug"
+    echo "  \$0 192.168.1.100 jetson deploy data"
     echo "  \$0 192.168.1.100 jetson stop"
     echo "  \$0 192.168.1.100 jetson delete"
     echo "  \$0 192.168.1.100 jetson clean"
@@ -556,6 +559,24 @@ case \$ACTION in
                     -e LOG_LEVEL=DEBUG \\\\
                     \$IMAGE_TAG \\\\
                     python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level DEBUG"
+                ;;
+            "data")
+                echo "🔄 Deploying with data mode configuration..."
+                ssh \$USERNAME@\$JETSON_IP "mkdir -p /var/log/remote-control"
+                ssh \$USERNAME@\$JETSON_IP "docker run -d \\\\
+                    --name \$CONTAINER_NAME \\\\
+                    --restart unless-stopped \\\\
+                    --privileged \\\\
+                    --health-cmd='pgrep -f \"python main.py\"' \\\\
+                    --health-interval=30s \\\\
+                    --health-timeout=10s \\\\
+                    --health-retries=3 \\\\
+                    -v /dev:/dev \\\\
+                    -v /tmp/motor-proxy:/tmp/motor-proxy \\\\
+                    -v /var/log/remote-control:/var/log/remote-control \\\\
+                    -e LOG_LEVEL=DATA \\\\
+                    \$IMAGE_TAG \\\\
+                    python main.py --mode production --socket-path /tmp/motor-proxy/motor_controller.sock --log-level DATA"
                 ;;
             "secure")
                 echo "🔐 Deploying with secure configuration..."

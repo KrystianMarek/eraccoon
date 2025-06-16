@@ -29,13 +29,19 @@ class SocketClient:
         self.sock: Optional[socket.socket] = None
         self.connected = False
         self.client_id: Optional[str] = None
+        self.unique_name: Optional[str] = None
         self._stop_event = threading.Event()
         self._receiver_thread: Optional[threading.Thread] = None
+        self._keepalive_thread: Optional[threading.Thread] = None
 
         # Status tracking
         self.arduino_connected = False
         self.arduino_state = "unknown"
         self.last_command_success = True
+
+        # Keepalive management
+        self.keepalive_interval = 2.5  # Send keepalive every 2.5 seconds (server expects every 3s)
+        self.last_keepalive_response = time.time()
 
         # Callbacks
         self.on_status_update: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -62,6 +68,19 @@ class SocketClient:
 
             logger.info(f"✅ Connected to motor controller at {self.socket_path}")
 
+            # Send client identification
+            self.send_message({
+                'type': 'identify',
+                'name': 'RemoteControlService'
+            })
+
+            # Wait a moment for welcome and identification response
+            time.sleep(0.5)
+
+            # Start keepalive thread
+            self._keepalive_thread = threading.Thread(target=self._keepalive_loop, daemon=True)
+            self._keepalive_thread.start()
+
             # Request initial status
             self.get_status()
 
@@ -86,8 +105,12 @@ class SocketClient:
                 pass
             self.sock = None
 
+        # Wait for threads to finish
         if self._receiver_thread and self._receiver_thread.is_alive():
             self._receiver_thread.join(timeout=1.0)
+
+        if self._keepalive_thread and self._keepalive_thread.is_alive():
+            self._keepalive_thread.join(timeout=1.0)
 
         if self.on_connection_change:
             self.on_connection_change(False)
@@ -251,6 +274,36 @@ class SocketClient:
         """
         return self.send_message({'type': 'ping'})
 
+    def send_keepalive(self) -> bool:
+        """
+        Send keepalive message to maintain connection
+
+        Returns:
+            bool: True if keepalive sent successfully, False otherwise
+        """
+        return self.send_message({'type': 'keepalive'})
+
+    def _keepalive_loop(self):
+        """Background thread to send keepalive messages"""
+        while self.connected and not self._stop_event.is_set():
+            try:
+                # Wait for keepalive interval or stop event
+                if self._stop_event.wait(self.keepalive_interval):
+                    break  # Stop event was set
+
+                if self.connected:
+                    if self.send_keepalive():
+                        logger.debug("💓 Keepalive sent")
+                    else:
+                        logger.warning("❌ Failed to send keepalive")
+                        break
+
+            except Exception as e:
+                logger.error(f"❌ Keepalive error: {e}")
+                break
+
+        logger.debug("Keepalive loop ended")
+
     def _receive_messages(self):
         """Background thread to receive messages from the motor controller"""
         buffer = ""
@@ -301,6 +354,15 @@ class SocketClient:
             if msg_type == 'welcome':
                 self.client_id = data.get('client_id')
                 logger.info(f"✅ Connected as {self.client_id}")
+
+            elif msg_type == 'identify_response':
+                self.unique_name = data.get('unique_name')
+                claimed_name = data.get('claimed_name')
+                logger.info(f"🏷️  Identified as {self.unique_name} (claimed: {claimed_name})")
+
+            elif msg_type == 'keepalive_response':
+                self.last_keepalive_response = time.time()
+                logger.debug("💓 Keepalive acknowledged")
 
             elif msg_type == 'status':
                 self._handle_status_message(data)
@@ -372,7 +434,16 @@ class SocketClient:
         """Handle sensor data from motor controller"""
         sensor_data = data.get('data')
         if sensor_data:
-            logger.debug(f"📡 Sensor data received")
+            # Log sensor data occasionally to avoid spam
+            front_left = sensor_data.get('front_left', 'N/A')
+            front_right = sensor_data.get('front_right', 'N/A')
+            rear_left = sensor_data.get('rear_left', 'N/A')
+            rear_right = sensor_data.get('rear_right', 'N/A')
+            front_collision = sensor_data.get('front_collision', False)
+            rear_collision = sensor_data.get('rear_collision', False)
+
+            logger.debug(f"📡 Sensors: FL:{front_left} FR:{front_right} RL:{rear_left} RR:{rear_right} "
+                        f"Collisions: F:{front_collision} R:{rear_collision}")
         else:
             logger.debug(f"📡 No sensor data available")
 
@@ -411,6 +482,10 @@ class SocketClient:
     def get_arduino_state(self) -> str:
         """Get current Arduino state"""
         return self.arduino_state
+
+    def get_unique_name(self) -> Optional[str]:
+        """Get unique client name assigned by server"""
+        return self.unique_name
 
     def was_last_command_successful(self) -> bool:
         """Check if last command was successful"""

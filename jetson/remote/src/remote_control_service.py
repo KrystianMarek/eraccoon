@@ -99,13 +99,8 @@ class RemoteControlService:
         self.socket_send_interval = 0.1  # Send to socket at most every 100ms (10 Hz)
         self.pending_socket_send = False  # Flag to indicate data needs to be sent
 
-        # Periodic status checks to prevent Arduino timeout
-        self.last_status_check_time = 0
-        self.status_check_interval = 2.0  # Check status every 2 seconds to prevent 3-second timeout
-
         if mode == 'production':
             logger.info(f"🕐 Socket rate limiting enabled: max {1/self.socket_send_interval:.0f} Hz ({self.socket_send_interval*1000:.0f}ms intervals)")
-            logger.info(f"💓 Status checks enabled: every {self.status_check_interval:.1f}s to prevent Arduino timeout")
 
         # Threading
         self.update_thread: Optional[threading.Thread] = None
@@ -385,16 +380,6 @@ class RemoteControlService:
                         if (self.socket_client and self.socket_client.is_connected()
                             and self.connection_state == ConnectionState.FULLY_CONNECTED):
                             self._send_motor_commands()
-
-                # Periodic status check to prevent Arduino timeout
-                current_time = time.time()
-                if (self.socket_client and self.socket_client.is_connected() and
-                    current_time - self.last_status_check_time >= self.status_check_interval):
-                    try:
-                        self.socket_client.get_status()
-                        self.last_status_check_time = current_time
-                    except Exception as e:
-                        logger.debug(f"Status check failed: {e}")
 
                 # Small delay for update loop
                 time.sleep(0.02)  # 50 Hz update rate

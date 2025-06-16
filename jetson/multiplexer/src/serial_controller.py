@@ -364,6 +364,8 @@ class SerialController:
 
     def send_mecanum_command(self, left_front: int, left_rear: int, right_front: int, right_rear: int) -> bool:
         """Send a mecanum-style JSON command to Arduino"""
+        logger.debug(f"🔍 SERIAL: send_mecanum_command called with LF:{left_front} LR:{left_rear} RF:{right_front} RR:{right_rear}")
+
         if not self._is_connected():
             logger.warning(f"Cannot send mecanum command - not connected")
             return False
@@ -373,7 +375,9 @@ class SerialController:
             return max(-255, min(255, speed))
 
         try:
+            logger.debug(f"🔍 SERIAL: About to acquire _write_lock")
             with self._write_lock:
+                logger.debug(f"🔍 SERIAL: _write_lock acquired, creating JSON command")
                 # Create JSON command for mecanum movement
                 json_cmd = {
                     "type": "mecanum",
@@ -385,12 +389,16 @@ class SerialController:
                     }
                 }
                 cmd_str = f"{json.dumps(json_cmd)}\n"
+                logger.debug(f"🔍 SERIAL: About to write to serial: {cmd_str.strip()}")
                 self.serial_conn.write(cmd_str.encode('utf-8'))
                 self.last_activity = time.time()
+                logger.debug(f"🔍 SERIAL: Serial write completed")
                 logger.debug(f"Sent mecanum command: LF:{left_front} LR:{left_rear} RF:{right_front} RR:{right_rear}")
+                logger.debug(f"🔍 SERIAL: About to release _write_lock and return True")
                 return True
         except Exception as e:
             logger.error(f"Failed to send mecanum command - {e}")
+            logger.error(f"🔍 SERIAL: Exception in send_mecanum_command: {type(e).__name__}: {e}")
             self._handle_connection_error()
             return False
 
@@ -629,16 +637,22 @@ class SerialController:
                 # Send keepalive if we have a serial connection (simpler check)
                 if self._running and self.serial_conn and self.serial_conn.is_open:
                     try:
-                        with self._write_lock:
-                            # Send keepalive as JSON command
-                            keepalive_cmd = {
-                                "type": "tank",
-                                "command": "KEEPALIVE",
-                                "value": 0
-                            }
-                            cmd_str = f"{json.dumps(keepalive_cmd)}\n"
-                            self.serial_conn.write(cmd_str.encode('utf-8'))
-                            logger.debug("Sent keepalive command")
+                        # Use timeout on lock acquisition to prevent deadlock with motor commands
+                        if self._write_lock.acquire(timeout=0.5):  # 500ms timeout
+                            try:
+                                # Send keepalive as JSON command
+                                keepalive_cmd = {
+                                    "type": "tank",
+                                    "command": "KEEPALIVE",
+                                    "value": 0
+                                }
+                                cmd_str = f"{json.dumps(keepalive_cmd)}\n"
+                                self.serial_conn.write(cmd_str.encode('utf-8'))
+                                logger.debug("Sent keepalive command")
+                            finally:
+                                self._write_lock.release()
+                        else:
+                            logger.debug("Keepalive skipped - write lock busy (motor command in progress)")
                     except Exception as e:
                         logger.warning(f"Keepalive failed: {e}")
                         self._handle_connection_error()

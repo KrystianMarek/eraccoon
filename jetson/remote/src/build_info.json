@@ -1,8 +1,8 @@
 {
   "version": "2.0.0",
-  "build_date": "2025-06-15 22:37:01 UTC",
-  "build_timestamp": 1750027021,
-  "git_commit": "2cfc78d",
+  "build_date": "2025-06-16 10:31:25 UTC",
+  "build_timestamp": 1750069885,
+  "git_commit": "1dc4735",
   "git_branch": "v2",
   "git_root": "/Users/kmarek/Development/eraccoon",
   "git_dirty": true,
