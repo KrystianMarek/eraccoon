@@ -1,0 +1,41 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Scripts (not needed inside container)
+run.sh
+docker_build.sh
+deploy_arm64.sh
+
+# Docker files (not needed inside container)
+Dockerfile
+.dockerignore
+
+# Log files
+*.log
+
+# Temporary files
+.DS_Store
+.tmp
+.cache

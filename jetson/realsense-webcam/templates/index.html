@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RealSense D435i Live Stream</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-size: 2.5em;
+        }
+
+        .streams-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .stream-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .stream-section:hover {
+            transform: translateY(-5px);
+        }
+
+        .stream-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        .video-frame {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            display: block;
+            margin: 0 auto;
+        }
+
+        .info-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .status {
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-online {
+            background-color: #4CAF50;
+        }
+
+        .status-offline {
+            background-color: #f44336;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .tech-info {
+            margin-top: 20px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .streams-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .stream-section {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 RealSense D435i Live Stream</h1>
+
+        <div class="streams-container">
+            <div class="stream-section">
+                <div class="stream-title">📷 RGB Camera</div>
+                <img src="{{ url_for('video_feed_rgb') }}" class="video-frame" alt="RGB Camera Feed">
+            </div>
+
+            <div class="stream-section">
+                <div class="stream-title">🌊 Depth Camera</div>
+                <img src="{{ url_for('video_feed_depth') }}" class="video-frame" alt="Depth Camera Feed">
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="status">
+                <span class="status-indicator status-online"></span>
+                Camera Status: <span id="camera-status">Streaming</span>
+            </div>
+
+            <div class="controls">
+                <button onclick="refreshStreams()">🔄 Refresh Streams</button>
+                <button onclick="checkStatus()">📊 Check Status</button>
+                <button onclick="toggleFullscreen()">🖥️ Fullscreen</button>
+            </div>
+
+            <div class="tech-info">
+                <strong>Intel RealSense D435i</strong><br>
+                Resolution: 640x480 @ 30fps<br>
+                Backend: Python + Flask + OpenCV<br>
+                Streaming via HTTP MJPEG
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function refreshStreams() {
+            // Force reload of video streams by updating src
+            const rgbImg = document.querySelector('.streams-container .stream-section:first-child img');
+            const depthImg = document.querySelector('.streams-container .stream-section:last-child img');
+
+            const timestamp = new Date().getTime();
+            rgbImg.src = rgbImg.src.split('?')[0] + '?t=' + timestamp;
+            depthImg.src = depthImg.src.split('?')[0] + '?t=' + timestamp;
+        }
+
+        function checkStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusElement = document.getElementById('camera-status');
+                    const indicatorElement = document.querySelector('.status-indicator');
+
+                    if (data.streaming) {
+                        statusElement.textContent = 'Streaming';
+                        indicatorElement.className = 'status-indicator status-online';
+                    } else {
+                        statusElement.textContent = 'Offline';
+                        indicatorElement.className = 'status-indicator status-offline';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking status:', error);
+                    document.getElementById('camera-status').textContent = 'Error';
+                });
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Auto-refresh status every 5 seconds
+        setInterval(checkStatus, 5000);
+
+        // Handle image load errors
+        document.querySelectorAll('.video-frame').forEach(img => {
+            img.onerror = function() {
+                this.style.opacity = '0.5';
+                this.alt = 'Stream not available';
+            };
+
+            img.onload = function() {
+                this.style.opacity = '1';
+            };
+        });
+    </script>
+</body>
+</html>
