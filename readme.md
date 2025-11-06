@@ -189,7 +189,8 @@ eraccoon/
 ## 🔮 Future Enhancements
 
 ### Planned Features
-- **Intel RealSense Integration**: 3D depth sensing and computer vision
+- **Intel RealSense Integration**: 3D depth sensing and computer vision, with YOLO [1.](https://www.geeksforgeeks.org/machine-learning/object-detection-using-yolov8/), 
+[2.](https://blog.roboflow.com/how-to-detect-objects-with-yolov8/), [3.](https://www.jetson-ai-lab.com/tutorial_ultralytics.html)
 - **Battery Management**: Capacity monitoring and safety shutdown
 - **Advanced Sensors**: Additional distance sensors for enhanced navigation
 - **Machine Learning**: AI-powered autonomous navigation
